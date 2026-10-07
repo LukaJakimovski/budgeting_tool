@@ -142,7 +142,12 @@ export function createServer({ config, store, backups, log = console }) {
   }
 
   async function api(req, res, url) {
-    const parts = url.pathname.replace(/^\/api\/v1\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+    let parts;
+    try {
+      parts = url.pathname.replace(/^\/api\/v1\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+    } catch {
+      throw new HttpError(400, 'Bad path');
+    }
     const method = req.method;
 
     if (parts[0] === 'health' && method === 'GET') {
@@ -212,10 +217,16 @@ export function createServer({ config, store, backups, log = console }) {
     if (!config.staticDir || !fs.existsSync(config.staticDir)) {
       return sendJSON(req, res, 404, { error: 'The web app is not installed on this server (build app/ first).' });
     }
-    let rel = decodeURIComponent(url.pathname);
+    let rel;
+    try {
+      rel = decodeURIComponent(url.pathname);
+    } catch {
+      throw new HttpError(400, 'Bad path');
+    }
     if (rel.endsWith('/')) rel += 'index.html';
-    let file = path.normalize(path.join(config.staticDir, rel));
-    if (!file.startsWith(config.staticDir)) throw new HttpError(403, 'Forbidden');
+    const root = path.resolve(config.staticDir);
+    let file = path.resolve(root, '.' + path.posix.normalize('/' + rel));
+    if (file !== root && !file.startsWith(root + path.sep)) throw new HttpError(403, 'Forbidden');
     if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       // Single-page app: unknown paths get the app shell.
       file = path.join(config.staticDir, 'index.html');

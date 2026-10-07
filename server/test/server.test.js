@@ -148,3 +148,35 @@ test('rejects bad entries and rate-limits bad tokens', async () => {
   assert.equal(last.status, 429);
   await s.close();
 });
+
+test('static files: serves the app, SPA fallback, no path traversal', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-static-'));
+  const site = path.join(dir, 'dist');
+  fs.mkdirSync(path.join(site, 'assets'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'dist-secret'));
+  fs.writeFileSync(path.join(site, 'index.html'), '<!doctype html><title>Tally</title>');
+  fs.writeFileSync(path.join(site, 'assets', 'app-abc.js'), 'console.log(1)');
+  fs.writeFileSync(path.join(dir, 'dist-secret', 'key.txt'), 'secret');
+  const config = loadConfig({ TALLY_DATA_DIR: dir, TALLY_STATIC_DIR: site });
+  const store = new Store(config.dataDir).loadAll();
+  const server = createServer({ config, store, backups: new Backups(config, store, quiet), log: quiet });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const get = (p) => fetch(origin + p).then(async (r) => ({ status: r.status, text: await r.text(), headers: r.headers }));
+  try {
+  const index = await get('/');
+  assert.equal(index.status, 200);
+  assert.match(index.headers.get('content-security-policy') ?? '', /default-src 'self'/);
+  assert.equal((await get('/some/route')).text, index.text);
+  const asset = await get('/assets/app-abc.js');
+  assert.match(asset.headers.get('cache-control') ?? '', /immutable/);
+  for (const evil of ['/../dist-secret/key.txt', '/%2e%2e/dist-secret/key.txt', '/assets/..%2f..%2fdist-secret%2fkey.txt']) {
+    const r = await get(evil);
+    assert.notEqual(r.text, 'secret', evil);
+  }
+  assert.equal((await get('/%E0%A4%A')).status, 400);
+  } finally {
+    await new Promise((r) => server.close(r));
+    store.closeAll();
+  }
+});
