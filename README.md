@@ -34,7 +34,10 @@ server you run yourself (e.g. a Raspberry Pi on Tailscale).
 * **Works on bad connections and slow phones:** everything saves locally
   first; sync happens in the background with a visible "not synced yet"
   indicator; 51 KB initial download; offline after first load.
-* **Sync & backups:** self-hosted, zero-dependency Node server; optional
+* **Receipts:** snap a photo (or attach a PDF) on any purchase; shrunk for fast
+  sync, encrypted with the rest of your data, included in backups.
+* **Sync & backups:** self-hosted, zero-dependency Node server (Docker image or
+  systemd); optional
   end-to-end encryption; daily rotating snapshots you can point at
   Syncthing/Nextcloud; restore from the app.
 * **Your data, reusable:** documented JSON format; export JSON / CSV / SQLite;
@@ -45,14 +48,13 @@ server you run yourself (e.g. a Raspberry Pi on Tailscale).
 
 ## Get it running
 
-1. **Server** (Raspberry Pi or any Linux box) — [docs/self-hosting.md](docs/self-hosting.md)
+1. **Server** (Raspberry Pi or any Linux box) — [docs/self-hosting.md](docs/self-hosting.md).
+   With Docker, a compose file with `image: ghcr.io/lukajakimovski/tally-server:latest`
+   and `docker compose up -d` is all it takes (a systemd install is documented too). Then:
    ```bash
-   git clone https://github.com/LukaJakimovski/budgeting_tool.git tally && cd tally
-   npm --prefix app ci && npm --prefix app run build
-   sudo ./server/deploy/install.sh
    sudo tailscale serve --bg --https=443 http://127.0.0.1:8787
    ```
-   Then open `https://<pi>.<tailnet>.ts.net` — that's also the web app.
+   Open `https://<pi>.<tailnet>.ts.net` — that's also the web app.
 2. **Linux (CachyOS/Arch):** `cd packaging/arch && makepkg -si` — [docs/building.md](docs/building.md)
 3. **Android:** grab the APK from the *Release* workflow (or build it) — [docs/building.md](docs/building.md#android)
 4. In the app: *Settings → Sync & devices*, create a vault on one device and

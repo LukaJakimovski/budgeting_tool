@@ -14,9 +14,51 @@ machine works.
  browser ─────┘                                                                    └─ /var/lib/tally (vaults, backups, exports)
 ```
 
+## How sync works (the plan in one paragraph)
+
+Every device keeps its **own full copy** of your data and works offline. Each
+change is saved on the device first, then pushed to the server in the
+background; other devices pull it on their next sync (on open, when they come
+back online, and every minute while open). The server is just an ordered log
+per vault plus your receipt files and daily backups — it never needs to be
+"up" for you to log a purchase. Details: [sync-protocol.md](sync-protocol.md).
+
 ## 1. Install
 
-### Option A — directly with Node (recommended on a Pi)
+### Option A — Docker (recommended)
+
+The release workflow publishes a ready-made image for amd64, arm64 (Pi 4/5 on a
+64-bit OS) and armv7 (32-bit Pi OS): `ghcr.io/lukajakimovski/tally-server`.
+You don't need the source code on the Pi — save this as
+`~/tally/docker-compose.yml`:
+
+```yaml
+services:
+  tally:
+    image: ghcr.io/lukajakimovski/tally-server:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"   # only this machine; tailscale serve exposes it
+    volumes:
+      - ./data:/data            # vaults, receipts, exports, backups
+      # - /home/pi/Sync/tally-backups:/backups   # + TALLY_BACKUP_DIR=/backups
+    environment:
+      TZ: America/Toronto
+```
+
+```bash
+cd ~/tally && docker compose up -d
+```
+
+* Data lives in `~/tally/data` (owned by uid 1000 — the default `pi` user).
+* Update: `docker compose pull && docker compose up -d`.
+* Logs: `docker logs -f tally`.
+* Tags: `latest` and `x.y.z` for releases (`v*` git tags), `edge` for manual
+  builds of the release workflow.
+* Building it yourself instead (from a checkout):
+  `docker compose -f server/docker-compose.yml up -d --build`.
+
+### Option B — directly with Node (systemd)
 
 ```bash
 # Node.js 20+ (Raspberry Pi OS / Debian)
@@ -36,21 +78,14 @@ Instead of building on the Pi you can download `tally-server.tar.gz` from a
 GitHub release (it contains the built app), unpack it and run the same
 `sudo ./server/deploy/install.sh`.
 
-### Option B — Docker
-
-```bash
-git clone https://github.com/LukaJakimovski/budgeting_tool.git tally && cd tally
-docker compose -f server/docker-compose.yml up -d --build
-```
-
-Data lives in `server/data/`. The container only listens on `127.0.0.1:8787`.
-
 ### Option C — just run it
 
 ```bash
 npm --prefix app ci && npm --prefix app run build
 node server/src/index.js serve          # http://0.0.0.0:8787, data in server/data
 ```
+
+Either way the server needs about 50 MB of RAM and almost no CPU.
 
 ## 2. Make it reachable over Tailscale with HTTPS
 
@@ -93,10 +128,12 @@ changed**, and keeps 14 daily, 8 weekly and 24 monthly snapshots:
 ```
 
 * **Off-device copies:** point `TALLY_BACKUP_DIR` at a Syncthing or Nextcloud
-  folder and they'll be copied to your other machines automatically (see the
-  note about the systemd sandbox in `/opt/tally/tally-server.env`).
-* **Manual snapshot:** `sudo -u tally node /opt/tally/server/src/index.js backup`
-  or *Settings → Sync → Snapshot now* in the app.
+  folder and they'll be copied to your other machines automatically. Docker:
+  mount the folder (see the compose file). systemd: see the note about the
+  sandbox in `/opt/tally/tally-server.env`.
+* **Manual snapshot:** *Settings → Sync → Snapshot now* in the app, or
+  `docker exec tally node src/index.js backup` /
+  `sudo -u tally node /opt/tally/server/src/index.js backup`.
 * **Restore:** *Settings → Sync → Server backups → Restore* (the current state is
   snapshotted first, so a restore can itself be undone).
 * **Receipts** are copied once into `/var/lib/tally/backups/<vault>/blobs/`
@@ -160,6 +197,10 @@ node server/src/index.js export <vault> [f]  # write the plain JSON export (unen
 
 ## Updating
 
+Docker: `docker compose pull && docker compose up -d`.
+
+systemd:
+
 ```bash
 cd tally && git pull
 npm --prefix app ci && npm --prefix app run build
@@ -177,4 +218,4 @@ Open apps pick up the new web version on their next start (the browser shows a
   is case-sensitive.
 * **Linux app can't reach an `http://` server** — desktop WebViews may block
   plain http from the app's secure origin; use the HTTPS address from step 2.
-* Logs: `journalctl -u tally-server -f`.
+* Logs: `docker logs -f tally` or `journalctl -u tally-server -f`.

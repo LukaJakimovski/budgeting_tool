@@ -1,16 +1,25 @@
-# docker compose -f server/docker-compose.yml up -d --build
+# Tally sync server. Copy this file to your Pi (no git checkout needed) and run:
+#   docker compose up -d
+# Then expose it on your tailnet with HTTPS (host command):
+#   sudo tailscale serve --bg --https=443 http://127.0.0.1:8787
 services:
   tally:
+    image: ghcr.io/lukajakimovski/tally-server:latest
+    # With a checkout of the repo you can build it yourself instead:
+    #   docker compose -f server/docker-compose.yml up -d --build
     build:
       context: ..
       dockerfile: server/Dockerfile
     container_name: tally
     restart: unless-stopped
-    # Only reachable from this machine; expose with `tailscale serve` (see docs/self-hosting.md).
     ports:
-      - "127.0.0.1:8787:8787"
+      - "127.0.0.1:8787:8787"   # only this machine; `tailscale serve` puts it on your tailnet
     volumes:
-      - ./data:/data
+      - ./data:/data            # vaults, receipts, exports (must be writable by uid 1000)
+      # Copy backups somewhere Syncthing/Nextcloud picks up:
+      # - /home/pi/Sync/tally-backups:/backups
     environment:
-      TALLY_BACKUP_KEEP_DAILY: "14"
-      # TALLY_SIGNUP_SECRET: "change-me"
+      TZ: America/Toronto
+      # TALLY_BACKUP_DIR: /backups
+      # TALLY_SIGNUP_SECRET: change-me     # require a secret to create vaults (for friends)
+      # TALLY_BACKUP_KEEP_DAILY: "14"
