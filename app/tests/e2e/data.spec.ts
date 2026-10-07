@@ -57,3 +57,19 @@ test('appearance: pick a style and colour, persists after reload', async ({ page
   const accent = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
   expect(accent).not.toBe('');
 });
+
+test('periods stop at today in Stats and History', async ({ page }) => {
+  await start(page);
+  for (const path of ['/#/stats', '/#/history']) {
+    await page.goto(path);
+    const next = page.getByRole('button', { name: 'Next period' });
+    await expect(next).toBeDisabled();
+    await page.getByRole('button', { name: 'Previous period' }).click();
+    await expect(next).toBeEnabled();
+    await next.click();
+    await expect(next).toBeDisabled();
+  }
+  // Custom ranges can't end in the future either
+  await page.getByRole('button', { name: /Oct|Nov|Dec|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep/ }).first().click();
+  await expect(page.getByLabel('To')).toHaveAttribute('max', /^\d{4}-\d{2}-\d{2}$/);
+});

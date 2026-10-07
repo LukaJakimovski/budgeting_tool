@@ -15,7 +15,7 @@
   import Heatmap from '$lib/charts/Heatmap.svelte';
   import { rangeFromQuery, rangeToQuery, type RangeValue } from '$lib/ui/range';
   import { filterFromQuery, filterToQuery } from '$lib/ui/filterQuery';
-  import { allocationsIn, autoGranularity, breakdown, cumulative, spendColumns, DIMENSION_LABELS, type Dimension, type Granularity } from '$lib/analysis';
+  import { allocationsIn, autoGranularity, breakdown, cumulative, pastPart, spendColumns, DIMENSION_LABELS, type Dimension, type Granularity } from '$lib/analysis';
   import { totals, spendByDay } from '$lib/core/ledger';
   import { addDays, daysBetween, previousRange, today, minDate } from '$lib/core/dates';
   import { money, pct, date as fmtDate, range as fmtRange } from '$lib/ui/format';
@@ -53,18 +53,17 @@
   const g = $derived(gran === 'auto' ? autoGranularity(effective) : gran);
   const columns = $derived(spendColumns(allocs, effective, g));
   const rows = $derived(breakdown(allocs, dim, mode));
-  const isCurrent = $derived(effective.start <= today() && today() < effective.end);
 
+  // Both lines run up to today: "this far into the period" vs the same number of days last time.
   const lineData = $derived.by(() => {
-    const len = daysBetween(effective.start, effective.end);
-    if (len > 400 || !prevRange) return null;
-    const labels: string[] = [];
-    for (let i = 0; i < len; i++) labels.push(`Day ${i + 1}`);
-    const cur = cumulative(allocs, effective, isCurrent ? today() : null);
+    const shown = pastPart(effective);
+    const len = daysBetween(shown.start, shown.end);
+    if (len < 1 || len > 400 || !prevRange) return null;
+    const cur = cumulative(allocs, shown, null);
     const prevAllocs = allocationsIn(prevRange, filter);
     const prev = cumulative(prevAllocs, { start: prevRange.start, end: addDays(prevRange.start, len) }, null);
     return {
-      labels: labels.map((_, i) => fmtDate(addDays(effective.start, i)).slice(0, 5)),
+      labels: Array.from({ length: len }, (_, i) => fmtDate(addDays(shown.start, i)).slice(0, 5)),
       series: [
         { name: 'This period', color: 'var(--accent)', values: cur },
         { name: `Previous (${fmtRange(prevRange)})`, color: 'var(--text-faint)', values: prev },
@@ -72,11 +71,11 @@
     };
   });
 
-  // Short periods get a 26-week calendar ending with the period, long ones at most a year.
+  // Short periods get a 26-week calendar ending with the period, long ones at most a year; never past today.
   const heatRange = $derived.by(() => {
     const len = daysBetween(effective.start, effective.end);
-    if (len >= 56 && len <= 370) return effective;
-    const end = len < 56 ? effective.end : addDays(today(), 1);
+    if (len >= 56 && len <= 370) return pastPart(effective);
+    const end = len < 56 ? pastPart(effective).end : addDays(today(), 1);
     return { start: addDays(end, len < 56 ? -182 : -365), end };
   });
   const heatValues = $derived(spendByDay(heatRange === effective ? allocs : allocationsIn(heatRange, filter)));

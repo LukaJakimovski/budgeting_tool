@@ -92,7 +92,11 @@ Every bulk change can be undone from the message that follows.
 
 ## Stats
 
-Pick a period and optional filter; everything on the page follows it:
+Pick a period and optional filter; everything on the page follows it. Periods
+and charts stop at today: **›** stops at the current week/month/year, custom
+ranges can't end in the future (History works the same way), and "This
+period vs the previous one" compares the days so far with the same number of
+days last time.
 
 * **Tiles:** spent (vs the previous period), per day, income and net, number of
   transactions.

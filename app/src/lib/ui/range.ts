@@ -1,5 +1,5 @@
 import { repo } from '../db/repo.svelte';
-import { presetRange, type CalendarPrefs, type RangePreset } from '../core/dates';
+import { presetRange, today, type CalendarPrefs, type RangePreset } from '../core/dates';
 import type { PeriodUnit } from '../core/types';
 
 export interface RangeValue {
@@ -26,12 +26,12 @@ export function fromPreset(p: RangePreset, prefs: CalendarPrefs = repo.calendar(
   return { ...r, unit };
 }
 
-/** Read a range from URL query params (from, to, unit) or fall back to a preset. */
+/** Read a range from URL query params (from, to, unit) or fall back to a preset (also for ranges that start in the future). */
 export function rangeFromQuery(q: URLSearchParams, fallback: RangePreset): RangeValue {
   const from = q.get('from');
   const to = q.get('to');
   const unit = q.get('unit') as RangeValue['unit'] | null;
-  if (from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+  if (from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= today()) {
     return { start: from, end: to, unit: unit ?? 'days' };
   }
   const preset = q.get('range') as RangePreset | null;

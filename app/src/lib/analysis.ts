@@ -8,6 +8,7 @@ import {
   addMonths,
   daysBetween,
   dayOfWeek,
+  minDate,
   MONTHS,
   parts,
   periodContaining,
@@ -27,6 +28,12 @@ export function allocationsIn(range: DateRange, filter?: Filter): Allocation[] {
   return repo.allocations().filter((a) => a.date >= range.start && a.date < range.end && m(a));
 }
 
+/** The part of a range up to and including today: charts never show days that haven't happened. */
+export function pastPart(range: DateRange): DateRange {
+  const end = minDate(range.end, addDays(today(), 1));
+  return { start: range.start, end: end < range.start ? range.start : end };
+}
+
 export type Granularity = 'day' | 'week' | 'month';
 
 export function autoGranularity(range: DateRange): Granularity {
@@ -36,15 +43,15 @@ export function autoGranularity(range: DateRange): Granularity {
   return 'month';
 }
 
-/** Spend per day/week/month across the range (empty buckets included). */
+/** Spend per day/week/month across the range up to today (empty buckets included). */
 export function spendColumns(allocs: Allocation[], range: DateRange, g: Granularity = autoGranularity(range)): Column[] {
   const byDay = spendByDay(allocs);
   const prefs = repo.calendar();
   const t = today();
   const out: Column[] = [];
-  // Clamp open-ended ranges ("all time") to the data.
+  // Clamp open-ended ranges ("all time") to the data, and everything to today.
   let start = range.start;
-  let end = range.end;
+  let end = pastPart(range).end;
   if (start <= '1970-01-01' || end >= '9999-01-01') {
     const dates = [...byDay.keys()].sort();
     start = dates[0] ?? t;

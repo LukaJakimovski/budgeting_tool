@@ -10,6 +10,7 @@
     periodLabel,
     shiftPeriod,
     simplePeriod,
+    today,
     type RangePreset,
   } from '../core/dates';
   import { fromPreset, type RangeValue } from './range';
@@ -29,17 +30,23 @@
     return periodLabel(value, value.unit, repo.setting('dateFormat'));
   });
 
-  function step(n: number) {
-    if (value.unit === 'all') return;
+  function stepped(n: number): RangeValue {
+    if (value.unit === 'all') return value;
     if (value.unit === 'days') {
       const len = daysBetween(value.start, value.end);
-      value = { start: addDays(value.start, n * len), end: addDays(value.end, n * len), unit: 'days' };
-      return;
+      return { start: addDays(value.start, n * len), end: addDays(value.end, n * len), unit: 'days' };
     }
     const spec = simplePeriod(value.unit);
     const prefs = repo.calendar();
-    const r = shiftPeriod(periodContaining(value.start, spec, prefs), spec, n, prefs);
-    value = { ...r, unit: value.unit };
+    return { ...shiftPeriod(periodContaining(value.start, spec, prefs), spec, n, prefs), unit: value.unit };
+  }
+
+  /** Periods that haven't started yet have nothing to show. */
+  const canNext = $derived(value.unit !== 'all' && stepped(1).start <= today());
+
+  function step(n: number) {
+    if (n > 0 && !canNext) return;
+    value = stepped(n);
   }
 
   function choose(p: RangePreset) {
@@ -48,8 +55,9 @@
   }
 
   function applyCustom() {
-    if (!customStart || !customEnd || customEnd < customStart) return;
-    value = { start: customStart, end: addDays(customEnd, 1), unit: 'days' };
+    const end = customEnd > today() ? today() : customEnd;
+    if (!customStart || !end || end < customStart) return;
+    value = { start: customStart, end: addDays(end, 1), unit: 'days' };
     open = false;
   }
 </script>
@@ -69,7 +77,7 @@
     <Icon name="calendar" size={16} />
     {label}
   </button>
-  <button type="button" class="icon-btn" onclick={() => step(1)} aria-label="Next period" disabled={value.unit === 'all'}><Icon name="chevronRight" /></button>
+  <button type="button" class="icon-btn" onclick={() => step(1)} aria-label="Next period" disabled={!canNext}><Icon name="chevronRight" /></button>
 
   {#if open}
     <div class="menu card" role="dialog" aria-label="Choose period">
@@ -79,8 +87,8 @@
         {/each}
       </div>
       <div class="custom">
-        <label class="field"><span class="label">From</span><input type="date" class="input" bind:value={customStart} /></label>
-        <label class="field"><span class="label">To</span><input type="date" class="input" bind:value={customEnd} /></label>
+        <label class="field"><span class="label">From</span><input type="date" class="input" max={today()} bind:value={customStart} /></label>
+        <label class="field"><span class="label">To</span><input type="date" class="input" max={today()} bind:value={customEnd} /></label>
         <button type="button" class="btn small primary" onclick={applyCustom}>Apply</button>
       </div>
     </div>

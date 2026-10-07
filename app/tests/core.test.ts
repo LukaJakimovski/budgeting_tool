@@ -232,5 +232,8 @@ describe('chart scales', () => {
   });
   it('makes round ticks', () => {
     expect(niceTicks(1450, 4)).toEqual([0, 500, 1000, 1500]);
+    // Nothing spent yet: still distinct ticks (charts key their gridlines by value)
+    expect(niceTicks(1, 4)).toEqual([0, 1]);
+    expect(niceTicks(3, 4)).toEqual([0, 1, 2, 3]);
   });
 });
