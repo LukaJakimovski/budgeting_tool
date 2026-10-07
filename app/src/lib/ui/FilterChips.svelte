@@ -21,6 +21,7 @@
     const drop = <K extends keyof Filter>(k: K, id: string) => () => (value = { ...value, [k]: ((value[k] as string[]) ?? []).filter((x) => x !== id) });
     for (const id of value.categoryIds ?? []) out.push({ label: `${(repo.get(id) as { icon?: string })?.icon ?? ''} ${(repo.get(id) as { name?: string })?.name ?? '?'}`, remove: drop('categoryIds', id) });
     for (const id of value.tagIds ?? []) out.push({ label: `#${(repo.get(id) as { name?: string })?.name ?? '?'}`, remove: drop('tagIds', id) });
+    for (const id of value.excludeTagIds ?? []) out.push({ label: `not #${(repo.get(id) as { name?: string })?.name ?? '?'}`, remove: drop('excludeTagIds', id) });
     for (const id of value.merchantIds ?? []) out.push({ label: (repo.get(id) as { name?: string })?.name ?? '?', remove: drop('merchantIds', id) });
     for (const id of value.paymentMethodIds ?? []) out.push({ label: (repo.get(id) as { name?: string })?.name ?? '?', remove: drop('paymentMethodIds', id) });
     for (const c of value.channels ?? []) out.push({ label: c === 'online' ? 'Online' : 'In person', remove: drop('channels', c) });

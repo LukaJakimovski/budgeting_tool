@@ -155,6 +155,8 @@ export interface PaymentMethod extends BaseDoc {
 export interface Filter {
   categoryIds?: ID[];
   tagIds?: ID[];
+  /** Leave out anything carrying any of these tags, even when it matches everything else. */
+  excludeTagIds?: ID[];
   merchantIds?: ID[];
   paymentMethodIds?: ID[];
   channels?: Channel[];

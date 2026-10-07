@@ -196,11 +196,15 @@ currency), `weekStart` (0 = Sunday), `monthStartDay`, `dateFormat`
 
 Used by budgets, saved views and widgets. All parts are optional; parts are
 combined with AND, values inside a part with OR. Categories include their
-subcategories.
+subcategories. `excludeTagIds` is the one negative part: a line carrying any of
+those tags never matches, whatever else it matches ("Food, but not #work").
+Like `tagIds`, it is checked per line, so on a split purchase only the splits
+carrying the tag are left out (a tag on the whole purchase applies to every split).
 
 ```jsonc
 {
-  "categoryIds": ["cat_food"], "tagIds": [], "merchantIds": [], "paymentMethodIds": [],
+  "categoryIds": ["cat_food"], "tagIds": [], "excludeTagIds": ["tag_…"],
+  "merchantIds": [], "paymentMethodIds": [],
   "channels": ["online"], "kinds": ["expense"], "text": "coffee",
   "minAmount": 500, "maxAmount": null,      // base-currency minor units
   "hasAttachment": true                     // only with (true) / without (false) a receipt

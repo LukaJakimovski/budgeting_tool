@@ -102,6 +102,7 @@ export function isFilterEmpty(f: Filter | undefined): boolean {
   return (
     !f.categoryIds?.length &&
     !f.tagIds?.length &&
+    !f.excludeTagIds?.length &&
     !f.merchantIds?.length &&
     !f.paymentMethodIds?.length &&
     !f.channels?.length &&
@@ -120,6 +121,7 @@ export function compileFilter(f: Filter | undefined, lookup: Lookup): Matcher {
   const filter = f!;
   const cats = filter.categoryIds?.length ? expandCategories(filter.categoryIds, lookup.categories) : null;
   const tags = filter.tagIds?.length ? new Set(filter.tagIds) : null;
+  const notTags = filter.excludeTagIds?.length ? new Set(filter.excludeTagIds) : null;
   const merchants = filter.merchantIds?.length ? new Set(filter.merchantIds) : null;
   const methods = filter.paymentMethodIds?.length ? new Set(filter.paymentMethodIds) : null;
   const channels = filter.channels?.length ? new Set(filter.channels) : null;
@@ -129,6 +131,7 @@ export function compileFilter(f: Filter | undefined, lookup: Lookup): Matcher {
     const tx = a.tx;
     if (cats && !(a.categoryId && cats.has(a.categoryId))) return false;
     if (tags && !a.tagIds.some((t) => tags.has(t))) return false;
+    if (notTags && a.tagIds.some((t) => notTags.has(t))) return false;
     if (merchants && !(tx.merchantId && merchants.has(tx.merchantId))) return false;
     if (methods && !(tx.paymentMethodId && methods.has(tx.paymentMethodId))) return false;
     if (channels && !(tx.channel && channels.has(tx.channel))) return false;

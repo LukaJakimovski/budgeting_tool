@@ -54,3 +54,53 @@ test('budget feedback after saving', async ({ page }) => {
   await page.goto('/#/budgets');
   await expect(page.getByText('Close to limit')).toBeVisible();
 });
+
+test('budget on a category that leaves out a tag', async ({ page }) => {
+  await start(page);
+  await page.goto('/#/budgets');
+  await page.getByRole('button', { name: 'New budget' }).click();
+  await page.getByRole('option', { name: /^Food/ }).click();
+  await page.getByRole('group', { name: 'Filter sections' }).getByRole('button', { name: /^Tags/ }).click();
+  await page.getByRole('button', { name: 'Exclude' }).click();
+  await expect(page.getByText('Nothing here yet.')).toBeVisible(); // no tags yet
+  await page.getByRole('button', { name: 'Cancel' }).click();
+
+  // Tag a work lunch (creating the tag), then build the budget.
+  await page.getByRole('button', { name: /^New(?! budget)/ }).first().click();
+  await page.getByLabel('Amount').fill('20');
+  await page.getByLabel('Merchant').fill('Deli');
+  await page.getByRole('group', { name: 'Category' }).getByRole('button', { name: /Eating out/ }).click();
+  await page.getByRole('button', { name: 'Details' }).click();
+  await page.getByLabel('Add a tag').fill('work');
+  await page.getByLabel('Add a tag').press('Enter');
+  await page.getByRole('button', { name: 'Add purchase' }).click();
+  await expect(page.getByText('Saved $20.00 at Deli')).toBeVisible();
+
+  await page.goto('/#/budgets');
+  await page.getByRole('button', { name: 'New budget' }).click();
+  await page.getByRole('option', { name: /^Food/ }).click();
+  await page.getByRole('group', { name: 'Filter sections' }).getByRole('button', { name: /^Tags/ }).click();
+  await page.getByRole('button', { name: 'Exclude' }).click();
+  await page.getByRole('option', { name: '#work' }).click();
+  await expect(page.getByRole('button', { name: 'Exclude (1)' })).toBeVisible();
+  await page.getByLabel('Limit amount').fill('50');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText(/^\$50\.00 left/)).toBeVisible(); // the work lunch doesn't count
+
+  await addPurchase(page, '8', 'Grocer', /Groceries/);
+  await expect(page.getByText(/Food: \$42\.00 left/)).toBeVisible();
+
+  // Merging #work into another tag keeps it excluded.
+  await page.goto('/#/settings/tags');
+  await page.getByPlaceholder(/New tag/).fill('office');
+  await page.getByRole('button', { name: 'Add' }).click();
+  await page.getByRole('button', { name: /^#work/ }).click();
+  await page.getByLabel('Merge into another tag').selectOption({ label: '#office' });
+  await page.getByRole('button', { name: 'Merge' }).click();
+  await page.goto('/#/budgets');
+  await page.getByRole('button', { name: /^🍽️ Food/ }).click();
+  await page.getByRole('button', { name: 'Edit' }).click();
+  await page.getByRole('group', { name: 'Filter sections' }).getByRole('button', { name: /^Tags/ }).click();
+  await expect(page.getByRole('button', { name: 'Exclude (1)' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('option', { name: '#office' })).toHaveAttribute('aria-selected', 'true');
+});

@@ -146,6 +146,21 @@ describe('ledger', () => {
     expect(m(allocate(tx({ categoryId: 'cat_coffee' }), ctx)[0])).toBe(true);
     expect(m(allocate(tx({ categoryId: 'cat_fuel' }), ctx)[0])).toBe(false);
   });
+  it('excludes tags, per split line', () => {
+    const m = compileFilter({ categoryIds: ['cat_food'], excludeTagIds: ['tag_work'] }, lookup);
+    expect(m(allocate(tx({ categoryId: 'cat_coffee' }), ctx)[0])).toBe(true);
+    expect(m(allocate(tx({ categoryId: 'cat_coffee', tagIds: ['tag_work', 'tag_sam'] }), ctx)[0])).toBe(false);
+    expect(m(allocate(tx({ categoryId: 'cat_fuel' }), ctx)[0])).toBe(false);
+    // Only the split tagged #work is left out; a tag on the whole purchase leaves out every split.
+    const split = [
+      { amount: 600, categoryId: 'cat_groceries', tagIds: [], note: '' },
+      { amount: 400, categoryId: 'cat_treats', tagIds: ['tag_work'], note: '' },
+    ];
+    expect(allocate(tx({ splits: split }), ctx).map(m)).toEqual([true, false]);
+    expect(allocate(tx({ splits: split, tagIds: ['tag_work'] }), ctx).map(m)).toEqual([false, false]);
+    // On its own an exclusion means "everything except".
+    expect(compileFilter({ excludeTagIds: ['tag_work'] }, lookup)(allocate(tx({ categoryId: 'cat_fuel' }), ctx)[0])).toBe(true);
+  });
   it('totals refunds against spending', () => {
     const allocs = [tx({ amount: 1000, baseAmount: 1000 }), tx({ kind: 'refund', amount: 300, baseAmount: 300 }), tx({ kind: 'income', amount: 5000, baseAmount: 5000 })]
       .flatMap((t) => allocate(t, ctx));
@@ -178,6 +193,14 @@ describe('budgets', () => {
     expect(s.perDayLeft).toBe(60);
     const h = budgetHistory(budget, allocs, lookup, { weekStart: 1, monthStartDay: 1 }, 2, '2026-10-07');
     expect(h.map((x) => x.spent)).toEqual([500, 1700]);
+  });
+  it('leaves out excluded tags', () => {
+    const food: Budget = { ...budget, filter: { categoryIds: ['cat_food'], excludeTagIds: ['tag_work'] } };
+    const allocs = [
+      tx({ categoryId: 'cat_groceries', amount: 1200, baseAmount: 1200, occurredAt: '2026-10-06T10:00:00-04:00' }),
+      tx({ categoryId: 'cat_coffee', amount: 500, baseAmount: 500, occurredAt: '2026-10-06T10:00:00-04:00', tagIds: ['tag_work'] }),
+    ].flatMap((t) => allocate(t, ctx));
+    expect(evaluateBudget(food, allocs, lookup, { weekStart: 1, monthStartDay: 1 }, '2026-10-07').spent).toBe(1200);
   });
 });
 

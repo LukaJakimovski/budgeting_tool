@@ -73,9 +73,9 @@ All transactions, grouped by **day with daily totals**, or as a **table** you
 can sort by date, amount, merchant, category or payment method (click the
 column header). Use **‹ ›** to step through weeks/months/years, the period
 button for presets or a custom range, the search box (name, merchant, notes,
-tags, bank text) and **Filter** (categories, tags, merchants, payment methods,
-online/in-person, type, amount). The current view lives in the address, so you
-can bookmark it.
+tags, bank text) and **Filter** (categories, tags to include or leave out,
+merchants, payment methods, online/in-person, type, amount). The current view
+lives in the address, so you can bookmark it.
 
 ## Stats
 
@@ -99,6 +99,8 @@ A budget is a **limit for a period on whatever you choose**:
 * period: daily, weekly, monthly, yearly — or every N of them (fortnightly);
 * what counts: categories (subcategories included), tags, merchants, payment
   methods — or everything;
+* what doesn't: under *Tags → Exclude*, pick tags to leave out even when they
+  match the rest — e.g. *Food* but not `#work` lunches you get paid back for;
 * budgets can overlap: a weekly *Food* budget and a weekly *Sweet treats*
   budget both count a donut.
 

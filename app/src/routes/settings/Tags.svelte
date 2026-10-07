@@ -32,7 +32,13 @@
     if (!editing) return;
     const id = editing.id;
     const affected = repo.transactions().filter((t) => t.tagIds.includes(id) || t.splits.some((s) => s.tagIds.includes(id)));
-    await repo.save([...affected.map((t) => withoutTag(t, id, target)), { ...editing, deleted: true }]);
+    // Budgets that include or exclude a merged tag follow it to the tag it was merged into.
+    const swap = (ids: ID[] | undefined) => ids && Array.from(new Set(ids.map((x) => (x === id ? target! : x))));
+    const budgets = target
+      ? repo.list('budget').filter((b) => b.filter.tagIds?.includes(id) || b.filter.excludeTagIds?.includes(id))
+          .map((b) => ({ ...b, filter: { ...b.filter, tagIds: swap(b.filter.tagIds), excludeTagIds: swap(b.filter.excludeTagIds) } }))
+      : [];
+    await repo.save([...affected.map((t) => withoutTag(t, id, target)), ...budgets, { ...editing, deleted: true }]);
     toasts.show(target ? `Merged (${affected.length} transactions)` : `Deleted #${editing.name}`);
     editing = null;
   }
