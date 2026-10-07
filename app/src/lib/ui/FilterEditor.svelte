@@ -10,6 +10,7 @@
 
   const base = repo.setting('baseCurrency');
   let section = $state<'categories' | 'tags' | 'merchants' | 'payment' | 'other'>('categories');
+  let tagMode = $state<'include' | 'exclude'>(value.excludeTagIds?.length && !value.tagIds?.length ? 'exclude' : 'include');
   let minText = $state(value.minAmount != null ? toDecimalString(value.minAmount, base) : '');
   let maxText = $state(value.maxAmount != null ? toDecimalString(value.maxAmount, base) : '');
 
@@ -18,6 +19,12 @@
   }
   function set<K extends keyof Filter>(k: K, v: Filter[K]) {
     value = { ...value, [k]: v };
+  }
+  /** A tag is either required or excluded, never both. */
+  function setTags(k: 'tagIds' | 'excludeTagIds', v: string[]) {
+    const other = k === 'tagIds' ? 'excludeTagIds' : 'tagIds';
+    const rest = arr(other).filter((id) => !v.includes(id));
+    value = { ...value, [k]: v, ...(rest.length !== arr(other).length ? { [other]: rest } : {}) };
   }
   function toggleKind(k: TxKind) {
     const cur = value.kinds ?? [];
@@ -43,7 +50,7 @@
 <div class="stack">
   <div class="chips" role="group" aria-label="Filter sections">
     {#each SECTIONS as [id, label] (id)}
-      {@const n = id === 'categories' ? arr('categoryIds').length : id === 'tags' ? arr('tagIds').length : id === 'merchants' ? arr('merchantIds').length : id === 'payment' ? arr('paymentMethodIds').length : (value.kinds?.length ?? 0) + (value.channels?.length ?? 0) + (value.minAmount != null ? 1 : 0) + (value.maxAmount != null ? 1 : 0) + (value.hasAttachment != null ? 1 : 0)}
+      {@const n = id === 'categories' ? arr('categoryIds').length : id === 'tags' ? arr('tagIds').length + arr('excludeTagIds').length : id === 'merchants' ? arr('merchantIds').length : id === 'payment' ? arr('paymentMethodIds').length : (value.kinds?.length ?? 0) + (value.channels?.length ?? 0) + (value.minAmount != null ? 1 : 0) + (value.maxAmount != null ? 1 : 0) + (value.hasAttachment != null ? 1 : 0)}
       <button type="button" class="chip" aria-pressed={section === id} onclick={() => (section = id)}>
         {label}{#if n}<span class="badge">{n}</span>{/if}
       </button>
@@ -53,7 +60,17 @@
   {#if section === 'categories'}
     <MultiPick items={categoryItems()} bind:value={() => arr('categoryIds'), (v) => set('categoryIds', v)} placeholder="Search categories" />
   {:else if section === 'tags'}
-    <MultiPick items={tagItems()} bind:value={() => arr('tagIds'), (v) => set('tagIds', v)} placeholder="Search tags" />
+    <div class="segmented mode" role="group" aria-label="Tag rule">
+      <button type="button" aria-pressed={tagMode === 'include'} onclick={() => (tagMode = 'include')}>Include{#if arr('tagIds').length}&nbsp;({arr('tagIds').length}){/if}</button>
+      <button type="button" aria-pressed={tagMode === 'exclude'} onclick={() => (tagMode = 'exclude')}>Exclude{#if arr('excludeTagIds').length}&nbsp;({arr('excludeTagIds').length}){/if}</button>
+    </div>
+    {#if tagMode === 'include'}
+      <span class="hint">Only what has at least one of these tags.</span>
+      <MultiPick items={tagItems()} bind:value={() => arr('tagIds'), (v) => setTags('tagIds', v)} placeholder="Search tags" />
+    {:else}
+      <span class="hint">Leave out anything with one of these tags, even if it matches everything else (e.g. Food, but not #work).</span>
+      <MultiPick items={tagItems()} bind:value={() => arr('excludeTagIds'), (v) => setTags('excludeTagIds', v)} placeholder="Search tags" />
+    {/if}
   {:else if section === 'merchants'}
     <MultiPick items={merchantItems()} bind:value={() => arr('merchantIds'), (v) => set('merchantIds', v)} placeholder="Search merchants" />
   {:else if section === 'payment'}
@@ -93,6 +110,9 @@
 </div>
 
 <style>
+  .mode {
+    align-self: flex-start;
+  }
   .two {
     display: grid;
     grid-template-columns: 1fr 1fr;

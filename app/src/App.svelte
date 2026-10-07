@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Logo from '$lib/ui/Logo.svelte';
   import { repo } from '$lib/db/repo.svelte';
   import { sync } from '$lib/sync/sync.svelte';
   import { lock } from '$lib/lock.svelte';
@@ -84,7 +85,7 @@
 {:else}
   <div class="shell">
     <aside class="rail" aria-label="Main">
-      <a class="brand" href="#/"><img src="./icon.svg" alt="" width="28" height="28" /> Tally</a>
+      <a class="brand" href="#/"><Logo size={28} /> Tally</a>
       <button class="btn primary new" onclick={() => ui.openEntry()}><Icon name="plus" size={18} /> New <kbd>N</kbd></button>
       <nav>
         {#each NAV as n (n.path)}
@@ -97,7 +98,7 @@
     </aside>
 
     <header class="topbar">
-      <a class="brand" href="#/"><img src="./icon.svg" alt="" width="24" height="24" /> Tally</a>
+      <a class="brand" href="#/"><Logo size={24} /> Tally</a>
       <span class="spacer"></span>
       <a href="#/settings/sync" class="icon-btn sync-icon {syncInfo.tone}" aria-label={syncInfo.label} title={syncInfo.label}>
         <Icon name={syncInfo.icon} />
@@ -199,9 +200,6 @@
     font-size: 1.1rem;
     color: var(--text);
     text-decoration: none;
-  }
-  .brand img {
-    border-radius: 7px;
   }
   .topbar {
     position: sticky;

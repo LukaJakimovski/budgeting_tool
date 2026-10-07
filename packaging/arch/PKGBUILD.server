@@ -13,6 +13,15 @@ backup=('etc/tally-server.env')
 source=("tally::git+${TALLY_GIT:-https://github.com/LukaJakimovski/budgeting_tool.git}#${TALLY_REF:-branch=main}")
 sha256sums=('SKIP')
 
+# Version from the commit being built (e.g. 0.1.0.r58.g280a7c2), so every update
+# is a newer package: makepkg rebuilds it and pacman upgrades instead of
+# reinstalling an old build.
+pkgver() {
+  cd tally
+  printf '%s.r%s.g%s' "$(sed -nE 's/^  "version": "([^"]+)".*/\1/p' app/package.json | head -1)" \
+    "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
 build() {
   cd tally/app
   export npm_config_cache="$srcdir/npm-cache"

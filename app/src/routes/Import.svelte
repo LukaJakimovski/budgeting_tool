@@ -10,6 +10,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import { parseCSV, guessMapping, buildRows, cleanDescriptor, commitImport, type ImportRow, type Mapping } from '$lib/importers';
   import { formatMoney } from '$lib/core/money';
+  import { suggestMerchantCleanup } from '$lib/bulk';
   import { date as fmtDate, merchantName, txTitle } from '$lib/ui/format';
   import type { Transaction, TxKind } from '$lib/core/types';
 
@@ -18,7 +19,9 @@
   let mapping = $state<Mapping | null>(null);
   let preset = $state<'cibc' | 'generic'>('generic');
   let rows = $state<ImportRow[]>([]);
-  let newNames = $state<Record<number, string>>({});
+  /** New merchant names, keyed by the name suggested from the bank text: rename once for all its rows. */
+  let newNames = $state<Record<string, string>>({});
+  let suggested = $state<Record<number, string>>({});
   let step = $state<1 | 2 | 3>(1);
   let busy = $state(false);
   let show = $state<'all' | 'import' | 'skip'>('all');
@@ -27,13 +30,25 @@
   const sample = $derived(raw.slice(mapping?.hasHeader ? 1 : 0, (mapping?.hasHeader ? 1 : 0) + 3));
   const toImport = $derived(rows.filter((r) => r.action === 'import'));
   const totals = $derived({
-    import: toImport.length,
+    import: toImport.filter((r) => r.reason !== 'duplicate').length,
+    update: toImport.filter((r) => r.reason === 'duplicate').length,
     duplicate: rows.filter((r) => r.reason === 'duplicate').length,
     matches: rows.filter((r) => r.reason === 'matches-existing').length,
     payment: rows.filter((r) => r.reason === 'payment').length,
     invalid: rows.filter((r) => r.reason === 'invalid').length,
   });
   const visible = $derived(rows.filter((r) => show === 'all' || r.action === show));
+  function selectAll(on: boolean) {
+    for (const r of visible) if (r.reason !== 'invalid') r.action = on ? 'import' : 'skip';
+  }
+  function updateImported() {
+    for (const r of rows) if (r.reason === 'duplicate') r.action = 'import';
+  }
+  const groupSize = $derived.by(() => {
+    const n: Record<string, number> = {};
+    for (const r of rows) if (r.action === 'import' && !r.merchantId && suggested[r.index]) n[suggested[r.index]] = (n[suggested[r.index]] ?? 0) + 1;
+    return n;
+  });
   const expenseCats = $derived(repo.categories());
 
   async function pick(e: Event) {
@@ -55,8 +70,14 @@
   function preview() {
     if (!mapping) return;
     rows = buildRows(raw, mapping);
-    const names: Record<number, string> = {};
-    for (const r of rows) if (!r.merchantId && r.action === 'import') names[r.index] = cleanDescriptor(r.description);
+    const sug: Record<number, string> = {};
+    const names: Record<string, string> = {};
+    for (const r of rows) {
+      if (r.merchantId) continue;
+      sug[r.index] = cleanDescriptor(r.description);
+      names[sug[r.index]] = sug[r.index];
+    }
+    suggested = sug;
     newNames = names;
     step = 3;
   }
@@ -66,9 +87,20 @@
     busy = true;
     try {
       const map = new Map<number, string>();
-      for (const [k, v] of Object.entries(newNames)) if (v.trim()) map.set(Number(k), v.trim());
-      const n = await commitImport(rows, mapping, map);
-      toasts.show(`Imported ${n} transaction${n === 1 ? '' : 's'}`, { tone: 'success' });
+      for (const r of rows) {
+        const name = newNames[suggested[r.index]]?.trim();
+        if (!r.merchantId && name) map.set(r.index, name);
+      }
+      const { imported, updated } = await commitImport(rows, mapping, map);
+      const tidy = suggestMerchantCleanup().length;
+      const parts: string[] = [];
+      if (imported || !updated) parts.push(`Imported ${imported} transaction${imported === 1 ? '' : 's'}`);
+      if (updated) parts.push(`${parts.length ? 'updated' : 'Updated'} ${updated} imported before`);
+      toasts.show(parts.join(', '), {
+        tone: 'success',
+        timeout: tidy ? 9000 : 4500,
+        action: tidy ? { label: 'Tidy merchants', run: () => router.go('/settings/merchants', { tidy: '1' }) } : undefined,
+      });
       const dates = toImport.map((r) => r.date).sort();
       router.go('/history', dates.length ? { from: dates[0], to: '9999-12-31', unit: 'days' } : {});
     } catch (err) {
@@ -90,6 +122,13 @@
     'matches-existing': 'You already logged this',
     payment: 'Card payment / transfer',
     invalid: "Couldn't read",
+  };
+  const WHEN_TICKED: Record<ImportRow['reason'], string> = {
+    '': '',
+    duplicate: 'will update it',
+    'matches-existing': 'will add another',
+    payment: 'will import',
+    invalid: '',
   };
 </script>
 
@@ -173,17 +212,30 @@
     <section class="card stack">
       <div class="summary">
         <span><strong>{totals.import}</strong> to import</span>
+        {#if totals.update}<span><strong>{totals.update}</strong> to update</span>{/if}
         {#if totals.matches}<span>{totals.matches} already logged by you</span>{/if}
         {#if totals.duplicate}<span>{totals.duplicate} imported before</span>{/if}
         {#if totals.payment}<span>{totals.payment} card payment{totals.payment === 1 ? '' : 's'} / transfer{totals.payment === 1 ? '' : 's'}</span>{/if}
         {#if totals.invalid}<span class="status-bad">{totals.invalid} unreadable</span>{/if}
       </div>
-      <p class="faint small">Rows you already entered by hand are linked to their bank line instead of being added twice. New merchant names are cleaned up from the bank text — edit them here and they'll be recognised automatically next time.</p>
-      <div class="segmented">
-        {#each [['all', 'All'], ['import', 'Importing'], ['skip', 'Skipped']] as [k, l] (k)}
-          <button aria-pressed={show === k} onclick={() => (show = k as typeof show)}>{l}</button>
-        {/each}
+      <p class="faint small">Rows you already entered by hand are linked to their bank line instead of being added twice. New merchant names are cleaned up from the bank text (reference numbers, store numbers and cities removed), and rows from the same place share one name — edit it once and every row follows; next time it's recognised automatically.</p>
+      <div class="row wrap">
+        <div class="segmented">
+          {#each [['all', 'All'], ['import', 'Importing'], ['skip', 'Skipped']] as [k, l] (k)}
+            <button aria-pressed={show === k} onclick={() => (show = k as typeof show)}>{l}</button>
+          {/each}
+        </div>
+        <span class="pick-all small">
+          <button class="link" onclick={() => selectAll(true)}>Select all</button>
+          <button class="link" onclick={() => selectAll(false)}>Select none</button>
+        </span>
       </div>
+      {#if totals.duplicate}
+        <div class="note row small">
+          <span class="grow">{totals.duplicate} row{totals.duplicate === 1 ? ' was' : 's were'} imported before. Tick {totals.duplicate === 1 ? 'it' : 'them'} to <strong>update</strong> those transactions with the merchant and category chosen here (nothing is added twice).</span>
+          <button class="btn small" onclick={updateImported}>Update all {totals.duplicate}</button>
+        </div>
+      {/if}
       <div class="rows">
         {#each visible as r (r.index)}
           <div class="irow" class:skip={r.action === 'skip'}>
@@ -195,7 +247,7 @@
             </div>
             <div class="desc">
               {r.description}
-              {#if r.reason}<span class="badge">{REASON[r.reason]}</span>{/if}
+              {#if r.reason}<span class="badge">{REASON[r.reason]}{#if r.action === 'import'}{` · ${WHEN_TICKED[r.reason]}`}{/if}</span>{/if}
               {#if r.matchId}
                 {@const t = repo.get<Transaction>(r.matchId)}
                 {#if t}<span class="faint tiny block">↔ {txTitle(t)}</span>{/if}
@@ -206,7 +258,10 @@
                 {#if r.merchantId}
                   <span class="merchant"><Icon name="store" size={14} /> {merchantName(r.merchantId)}</span>
                 {:else}
-                  <input class="input mini" bind:value={newNames[r.index]} placeholder="Merchant name" aria-label="New merchant name" />
+                  <span class="newname">
+                    <input class="input mini" bind:value={newNames[suggested[r.index]]} placeholder="Merchant name" aria-label="New merchant name" />
+                    {#if (groupSize[suggested[r.index]] ?? 0) > 1}<span class="faint tiny nowrap" title="Renaming changes all of them">×{groupSize[suggested[r.index]]}</span>{/if}
+                  </span>
                 {/if}
                 <select class="select mini" bind:value={r.categoryId} aria-label="Category">
                   <option value={null}>Category…</option>
@@ -223,7 +278,7 @@
       <div class="row">
         <button class="btn" onclick={() => (step = 2)}>Back</button>
         <span class="spacer"></span>
-        <button class="btn primary" disabled={busy || !totals.import} onclick={commit}><Icon name="check" size={18} /> Import {totals.import}</button>
+        <button class="btn primary" disabled={busy || !toImport.length} onclick={commit}><Icon name="check" size={18} /> {totals.update && !totals.import ? `Update ${totals.update}` : `Import ${totals.import}`}{totals.update && totals.import ? ` + update ${totals.update}` : ''}</button>
       </div>
     </section>
   {/if}
@@ -317,6 +372,34 @@
     grid-template-columns: 1fr 1fr auto;
     gap: var(--s2);
     align-items: center;
+  }
+  .pick-all {
+    display: inline-flex;
+    gap: var(--s3);
+  }
+  .link {
+    border: 0;
+    background: transparent;
+    padding: 4px 0;
+    color: var(--accent-text);
+    cursor: pointer;
+    font: inherit;
+  }
+  .note {
+    padding: var(--s2) var(--s3);
+    border-radius: var(--radius);
+    background: var(--surface2);
+    gap: var(--s3);
+  }
+  .grow {
+    flex: 1;
+    min-width: 0;
+  }
+  .newname {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
   }
   .merchant {
     display: flex;

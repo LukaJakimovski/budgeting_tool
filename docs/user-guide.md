@@ -73,9 +73,22 @@ All transactions, grouped by **day with daily totals**, or as a **table** you
 can sort by date, amount, merchant, category or payment method (click the
 column header). Use **‹ ›** to step through weeks/months/years, the period
 button for presets or a custom range, the search box (name, merchant, notes,
-tags, bank text) and **Filter** (categories, tags, merchants, payment methods,
-online/in-person, type, amount). The current view lives in the address, so you
-can bookmark it.
+tags, bank text) and **Filter** (categories, tags to include or leave out,
+merchants, payment methods, online/in-person, type, amount). The current view
+lives in the address, so you can bookmark it.
+
+**Editing many at once:** tap **Select**, then tap transactions (shift-click
+selects a range on a computer). *Select all* takes everything in the current
+view, not just what's on screen, so filter or search first. *+ Same merchant*
+adds everything in the view from the same place as what you picked, even when an
+old import made a separate merchant for every bank line. Then:
+
+* **Category**: split purchases keep their per-split categories;
+* **Merchant**: pick an existing one or type a new name;
+* **Tag**: add a tag, or remove one;
+* **Delete**: tap twice to confirm.
+
+Every bulk change can be undone from the message that follows.
 
 ## Stats
 
@@ -99,6 +112,8 @@ A budget is a **limit for a period on whatever you choose**:
 * period: daily, weekly, monthly, yearly — or every N of them (fortnightly);
 * what counts: categories (subcategories included), tags, merchants, payment
   methods — or everything;
+* what doesn't: under *Tags → Exclude*, pick tags to leave out even when they
+  match the rest — e.g. *Food* but not `#work` lunches you get paid back for;
 * budgets can overlap: a weekly *Food* budget and a weekly *Sweet treats*
   budget both count a donut.
 
@@ -125,6 +140,12 @@ All in Settings:
   archive. Deleting one asks where its transactions should move.
 * **Merchants:** edit learned defaults, turn learning off, add **bank names**
   (aliases) for CSV import, merge duplicates ("Tims" → "Tim Hortons").
+  **Tidy up** finds merchants that are the same place ("TIM HORTONS #53",
+  "TIM HORTONS #1207", "Point of Sale - Interac RETAIL PURCHASE … TIM HORTONS")
+  or still carry raw bank text, and merges or renames them in one go. **Select**
+  lets you merge or delete several at once. Merging moves their transactions,
+  recurring rules and budget filters, keeps the bank names for future imports,
+  and can be undone.
 * **Tags:** rename, archive, merge, delete.
 * **Payment methods:** add your cards/accounts, set "usually online / in
   person", reorder.
@@ -140,8 +161,22 @@ All in Settings:
    and purchases **you already logged by hand** (same amount within 3 days — the
    bank line is linked to your entry instead). Fix merchant names and categories
    as needed.
+   * Merchant names are taken from the bank text: CIBC's
+     `Point of Sale - Interac RETAIL PURCHASE 531214272782 TIM HORTONS #53`
+     becomes *Tim Hortons*. The channel, the transaction type, the reference
+     number (`531214272782`, or one like `24lmvmsy0000`), store numbers and the
+     city are dropped.
+   * Rows from the same place share one name (shown as ×3): change it once and
+     every one of those rows follows.
+   * **Select all / Select none** tick or untick every row in the current list.
+     Ticking a row marked *Already imported* **updates** the transaction it was
+     imported as (merchant, category, type) instead of adding it again.
+     *Update all* does that for every such row, which is the way to redo an old
+     import whose merchant names came out wrong.
+   * Pay deposits (`Electronic Funds Transfer PAY …`) come in as income.
 3. Import. Merchant names you confirm are remembered, so the next statement
-   needs fewer edits.
+   needs fewer edits. If merchants from older imports now look like duplicates,
+   the message after importing offers **Tidy merchants**.
 
 Tip: log as you go for the details only you know (what and why), and import the
 statement weekly or monthly to catch anything you forgot.

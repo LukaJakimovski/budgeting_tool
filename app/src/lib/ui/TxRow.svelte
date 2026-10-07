@@ -7,7 +7,13 @@
   import type { Tag, Transaction } from '../core/types';
   import Icon from './Icon.svelte';
 
-  let { tx, showDate = '' }: { tx: Transaction; showDate?: string } = $props();
+  let {
+    tx,
+    showDate = '',
+    selecting = false,
+    selected = false,
+    onselect,
+  }: { tx: Transaction; showDate?: string; selecting?: boolean; selected?: boolean; onselect?: (e: MouseEvent) => void } = $props();
 
   const sub = $derived.by(() => {
     const bits: string[] = [];
@@ -24,8 +30,19 @@
   const sign = $derived(tx.kind === 'expense' ? '' : '+');
 </script>
 
-<button type="button" class="list-item tx" onclick={() => ui.openEntry({ id: tx.id })}>
-  <span class="ico" aria-hidden="true">{tx.splits.length ? '✂️' : categoryIcon(tx.categoryId)}</span>
+<button
+  type="button"
+  class="list-item tx"
+  class:picked={selected}
+  role={selecting ? 'checkbox' : undefined}
+  aria-checked={selecting ? selected : undefined}
+  onclick={(e) => (selecting ? onselect?.(e) : ui.openEntry({ id: tx.id }))}
+>
+  {#if selecting}
+    <span class="ico"><span class="selbox" class:on={selected} aria-hidden="true">{#if selected}<Icon name="check" size={14} stroke={3} />{/if}</span></span>
+  {:else}
+    <span class="ico" aria-hidden="true">{tx.splits.length ? '✂️' : categoryIcon(tx.categoryId)}</span>
+  {/if}
   <span class="main">
     <span class="title">{txTitle(tx)}{#if tx.attachments?.length}<span class="clip" title="Has a receipt"><Icon name="paperclip" size={13} label="has receipt" /></span>{/if}</span>
     <span class="sub faint small">{showDate ? showDate + ' · ' : ''}{txTime(tx.occurredAt)} · {sub}</span>
@@ -39,6 +56,9 @@
 <style>
   .tx {
     padding: 10px var(--s2);
+  }
+  .tx.picked {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
   .ico {
     width: 36px;

@@ -63,9 +63,9 @@ describe('CIBC import', () => {
 
     const names = new Map(built.filter((r) => r.action === 'import').map((r) => [r.index, cleanDescriptor(r.description)]));
     const n = await commitImport(built, m, names);
-    expect(n).toBe(4);
+    expect(n).toEqual({ imported: 4, updated: 0 });
     const tims = repo.merchants().find((x) => x.name === 'Tim Hortons');
-    expect(tims?.aliases[0]).toContain('tim hortons');
+    expect(tims?.aliases).toEqual([]); // the name itself is what the bank text contains
     expect(repo.get<any>(manual.tx.id).importRef).toBe(built[5].fingerprint);
 
     // Importing the same file again finds nothing new

@@ -1,6 +1,6 @@
 # Tally desktop client for Arch / CachyOS / Manjaro.
 #
-#   cd packaging/arch && makepkg -si
+#   cd packaging/arch && makepkg -si      (run again to update)
 #
 # Builds from git. Override the source with TALLY_GIT (e.g. file:///path/to/checkout)
 # and TALLY_REF (e.g. branch=my-branch or commit=<sha>). See docs/building.md.
@@ -16,6 +16,15 @@ makedepends=('git' 'nodejs' 'npm' 'rust' 'cargo' 'pkgconf')
 options=('!lto' '!debug')
 source=("tally::git+${TALLY_GIT:-https://github.com/LukaJakimovski/budgeting_tool.git}#${TALLY_REF:-branch=main}")
 sha256sums=('SKIP')
+
+# Version from the commit being built (e.g. 0.1.0.r58.g280a7c2), so every update
+# is a newer package: makepkg rebuilds it and pacman upgrades instead of
+# reinstalling an old build.
+pkgver() {
+  cd tally
+  printf '%s.r%s.g%s' "$(sed -nE 's/^  "version": "([^"]+)".*/\1/p' app/package.json | head -1)" \
+    "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
 
 prepare() {
   cd tally

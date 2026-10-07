@@ -1,5 +1,6 @@
 <!-- First run: three quick choices, everything else has good defaults. -->
 <script lang="ts">
+  import Logo from '$lib/ui/Logo.svelte';
   import { repo } from '$lib/db/repo.svelte';
   import { ui } from '$lib/ui/ui.svelte';
   import { router } from '$lib/ui/router.svelte';
@@ -22,7 +23,7 @@
 
 <div class="page onb">
   <div class="hero">
-    <img src="./icon.svg" alt="" width="64" height="64" />
+    <Logo size={64} />
     <h1>Welcome to Tally</h1>
     <p class="muted">Log a purchase in a few seconds, set budgets that keep you honest, and see where your money goes. Everything is stored on this device first.</p>
   </div>
@@ -75,9 +76,8 @@
     text-align: center;
     margin: var(--s5) 0;
   }
-  .hero img {
-    border-radius: 16px;
-    margin-bottom: var(--s3);
+  .hero :global(.logo) {
+    margin: 0 auto var(--s3);
   }
   .hero h1 {
     margin-bottom: var(--s2);
