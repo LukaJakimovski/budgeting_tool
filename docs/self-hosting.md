@@ -50,6 +50,11 @@ services:
 cd ~/tally && docker compose up -d
 ```
 
+> **One-time step:** GitHub publishes new container images as *private*. Make
+> it public once — GitHub → your profile → **Packages** → `tally-server` →
+> **Package settings** → **Change visibility** → Public — or log the Pi in with
+> a token that has `read:packages`: `docker login ghcr.io -u <user>`.
+
 * Data lives in `~/tally/data` (owned by uid 1000 — the default `pi` user).
 * Update: `docker compose pull && docker compose up -d`.
 * Logs: `docker logs -f tally`.
