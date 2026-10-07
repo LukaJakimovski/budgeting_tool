@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Logo from '$lib/ui/Logo.svelte';
   import { platform } from '$lib/platform';
   import { repo } from '$lib/db/repo.svelte';
   const DOCS = 'https://github.com/LukaJakimovski/budgeting_tool/blob/main/docs';
@@ -6,7 +7,7 @@
 
 <div class="stack">
   <section class="card stack">
-    <div class="row"><img src="./icon.svg" alt="" width="40" height="40" style="border-radius: 10px" /><div><h2>Tally {__APP_VERSION__}</h2><span class="faint small">{platform()} · device {repo.deviceId}</span></div></div>
+    <div class="row"><Logo size={40} /><div><h2>Tally {__APP_VERSION__}</h2><span class="faint small">{platform()} · device {repo.deviceId}</span></div></div>
     <p class="muted small">Local-first budgeting. Your data is stored on your devices and, if you choose, synced through your own server.</p>
   </section>
   <section class="card stack">

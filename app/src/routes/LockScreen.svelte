@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Logo from '$lib/ui/Logo.svelte';
   import { lock } from '$lib/lock.svelte';
   import Icon from '$lib/ui/Icon.svelte';
 
@@ -39,7 +40,7 @@
 <svelte:window onkeydown={key} />
 
 <div class="lock" role="dialog" aria-modal="true" aria-label="Tally is locked">
-  <img src="./icon.svg" alt="" width="56" height="56" />
+  <Logo size={56} />
   <h1>Tally is locked</h1>
   <div class="dots" class:error aria-live="polite" aria-label={`${pin.length} digits entered`}>
     {#each Array(Math.max(4, pin.length)) as _, i (i)}<span class:on={i < pin.length}></span>{/each}
@@ -69,9 +70,6 @@
     gap: var(--s4);
     padding: var(--s5);
     text-align: center;
-  }
-  img {
-    border-radius: 14px;
   }
   .dots {
     display: flex;
