@@ -1,0 +1,13 @@
+{
+  "name": "tally-server",
+  "version": "0.1.0",
+  "description": "Self-hosted sync + backup server for Tally (zero dependencies)",
+  "type": "module",
+  "bin": { "tally-server": "src/index.js" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js serve",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "MIT"
+}
