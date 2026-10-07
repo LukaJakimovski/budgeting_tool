@@ -149,16 +149,16 @@
         <button aria-pressed={!create} onclick={() => (create = false)}>Join existing vault</button>
         <button aria-pressed={create} onclick={() => (create = true)}>Create new vault</button>
       </div>
-      <label class="field">
-        <span class="label">Vault name</span>
-        <input class="input" bind:value={vault} placeholder="e.g. luka" autocapitalize="off" autocorrect="off" spellcheck="false" />
-        <span class="hint">One vault per person or household. Lowercase letters, numbers, - and _.</span>
-      </label>
-      <label class="field">
-        <span class="label">Passphrase</span>
-        <input class="input" type="password" bind:value={passphrase} autocomplete={create ? 'new-password' : 'current-password'} />
-        <span class="hint">Used on every device you connect. It can't be recovered — store it in your password manager.</span>
-      </label>
+      <div class="field">
+        <label class="label" for="vault">Vault name</label>
+        <input id="vault" class="input" bind:value={vault} placeholder="e.g. luka" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="vault-hint" />
+        <span class="hint" id="vault-hint">One vault per person or household. Lowercase letters, numbers, - and _.</span>
+      </div>
+      <div class="field">
+        <label class="label" for="passphrase">Passphrase</label>
+        <input id="passphrase" class="input" type="password" bind:value={passphrase} autocomplete={create ? 'new-password' : 'current-password'} aria-describedby="pass-hint" />
+        <span class="hint" id="pass-hint">Used on every device you connect. It can't be recovered — store it in your password manager.</span>
+      </div>
       {#if create}
         <label class="field"><span class="label">Repeat passphrase</span><input class="input" type="password" bind:value={passphrase2} autocomplete="new-password" /></label>
         <label class="row"><input type="checkbox" bind:checked={encrypted} /> End-to-end encrypt (the server only stores scrambled data)</label>

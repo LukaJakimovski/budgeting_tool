@@ -159,7 +159,9 @@
       if (pickable && merchantFocus) selectMerchant(suggestions[highlighted]);
       else if (valid) save();
       else merchantFocus = false;
-    } else if (e.key === 'Escape' && merchantFocus) {
+    } else if (e.key === 'Escape' && merchantFocus && suggestions.length) {
+      // First Escape closes the suggestions, not the whole sheet.
+      e.preventDefault();
       e.stopPropagation();
       merchantFocus = false;
     }
@@ -296,8 +298,10 @@
     <!-- Amount -->
     <div class="amount-row">
       <button type="button" class="currency" onclick={cycleCurrency} aria-label={`Currency ${currency}, tap to change`} title="Change currency">{currency}</button>
+      <!-- svelte-ignore a11y_autofocus -->
       <input
         bind:this={amountEl}
+        autofocus={!existing}
         class="amount"
         inputmode="decimal"
         autocomplete="off"
