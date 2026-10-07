@@ -13,8 +13,10 @@ class UIState {
   locked = $state(false);
   /** Dashboard edit mode. */
   editingDashboard = $state(false);
-  /** Bumped when the user asks to install an app update. */
+  /** A new app version is installed and waiting. */
   updateReady = $state(false);
+  /** The user clicked "Reload" to switch to the new version. */
+  updateRequested = false;
 
   openEntry(req: EntryRequest = {}): void {
     this.entry = req;

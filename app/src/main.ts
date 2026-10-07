@@ -35,9 +35,11 @@ async function registerServiceWorker() {
       });
     if (reg.waiting && navigator.serviceWorker.controller) ui.updateReady = true;
     reg.addEventListener('updatefound', () => watch(reg.installing));
+    // Reload only when the user accepted an update (first-time activation also
+    // fires controllerchange, and must not reload the page under the user).
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!reloading) {
+      if (ui.updateRequested && !reloading) {
         reloading = true;
         location.reload();
       }

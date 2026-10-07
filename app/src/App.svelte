@@ -11,13 +11,18 @@
   import Icon, { type IconName } from '$lib/ui/Icon.svelte';
   import Home from './routes/Home.svelte';
   import History from './routes/History.svelte';
-  import Stats from './routes/Stats.svelte';
-  import Budgets from './routes/Budgets.svelte';
-  import Settings from './routes/Settings.svelte';
-  import Import from './routes/Import.svelte';
   import TxEditor from './routes/TxEditor.svelte';
   import LockScreen from './routes/LockScreen.svelte';
   import Onboarding from './routes/Onboarding.svelte';
+
+  // Less-used screens load on first visit, keeping start-up small on slow phones.
+  // (The service worker / native app bundle still has them offline.)
+  const lazy = {
+    stats: () => import('./routes/Stats.svelte'),
+    budgets: () => import('./routes/Budgets.svelte'),
+    settings: () => import('./routes/Settings.svelte'),
+    import: () => import('./routes/Import.svelte'),
+  };
 
   // Re-apply the theme and modules whenever their (synced) settings change.
   $effect(() => applyAppearance(repo.setting('appearance')));
@@ -107,6 +112,7 @@
         <button
           class="btn small primary"
           onclick={async () => {
+            ui.updateRequested = true;
             const reg = await navigator.serviceWorker.getRegistration();
             reg?.waiting?.postMessage('skip-waiting');
           }}>Reload</button
@@ -127,14 +133,12 @@
           {/if}
         {:else if section === 'history'}
           <History />
-        {:else if section === 'stats'}
-          <Stats />
-        {:else if section === 'budgets'}
-          <Budgets />
-        {:else if section === 'settings'}
-          <Settings />
-        {:else if section === 'import'}
-          <Import />
+        {:else if section in lazy}
+          {#await lazy[section as keyof typeof lazy]() then m}
+            <m.default />
+          {:catch err}
+            <div class="page empty"><p>Couldn't load this screen: {err.message}</p><button class="btn" onclick={() => location.reload()}>Reload</button></div>
+          {/await}
         {:else}
           <div class="page empty"><h1>Not found</h1><a href="#/">Go home</a></div>
         {/if}
