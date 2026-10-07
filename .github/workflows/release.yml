@@ -1,0 +1,130 @@
+# Builds every platform. Runs on version tags (v0.1.0 …) and on demand
+# (Actions → Release → Run workflow). Tag builds also publish a GitHub release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  web-server:
+    name: Web app + sync server bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci && npm run build
+        working-directory: app
+      - name: Bundle
+        run: |
+          mkdir -p out/tally-server/server out/tally-server/app
+          cp -r server/src server/package.json server/deploy server/Dockerfile server/docker-compose.yml out/tally-server/server/
+          cp -r app/dist out/tally-server/app/
+          cp LICENSE README.md out/tally-server/
+          tar -C out -czf tally-server.tar.gz tally-server
+      - uses: actions/upload-artifact@v4
+        with: { name: tally-server, path: tally-server.tar.gz }
+
+  linux:
+    name: Linux (deb, AppImage)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: desktop/src-tauri }
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+        working-directory: app
+      - run: npm ci && npm run build
+        working-directory: desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tally-linux
+          path: |
+            desktop/src-tauri/target/release/bundle/deb/*.deb
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            desktop/src-tauri/target/release/bundle/rpm/*.rpm
+
+  arch:
+    name: Arch package (CachyOS / Arch)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git nodejs npm rust webkit2gtk-4.1 gtk3 libsoup3 pkgconf
+          useradd -m builder
+      - uses: actions/checkout@v4
+      - name: makepkg
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          chown -R builder "$GITHUB_WORKSPACE"
+          cp -r packaging/arch /home/builder/pkg && chown -R builder /home/builder/pkg
+          cd /home/builder/pkg
+          sudo -u builder env TALLY_GIT="file://$GITHUB_WORKSPACE" TALLY_REF="commit=$GITHUB_SHA" makepkg --noconfirm
+          cp *.pkg.tar.zst "$GITHUB_WORKSPACE/"
+      - uses: actions/upload-artifact@v4
+        with: { name: tally-arch, path: '*.pkg.tar.zst' }
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: android-actions/setup-android@v3
+      - name: Build web app and copy into the Android project
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+      - name: Gradle build
+        working-directory: app/android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          TALLY_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          TALLY_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TALLY_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$VERSION" =~ ^[0-9] ]] || VERSION="0.1.0-dev"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/tally.jks"
+            export TALLY_KEYSTORE="$RUNNER_TEMP/tally.jks"
+            ./gradlew assembleRelease -PversionCode=${{ github.run_number }} -PversionName="$VERSION"
+            cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/tally-$VERSION.apk"
+          else
+            echo "::warning::No signing key secrets set — building a debug APK. Each build gets a new debug key, so uninstall the old app before installing a new build (your data comes back via sync or a backup). Add the ANDROID_* secrets to fix this (docs/building.md)."
+            ./gradlew assembleDebug -PversionCode=${{ github.run_number }} -PversionName="$VERSION"
+            cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/tally-$VERSION-debug.apk"
+          fi
+      - uses: actions/upload-artifact@v4
+        with: { name: tally-android, path: '*.apk' }
+
+  publish:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [web-server, linux, arch, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true

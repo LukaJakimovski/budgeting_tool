@@ -1,0 +1,32 @@
+# Optional: the Tally sync server as an Arch package (for an Arch-based home server).
+#   cp PKGBUILD.server PKGBUILD && makepkg -si   (in a separate directory)
+pkgname=tally-server
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Self-hosted sync and backup server for Tally (serves the web app too)'
+arch=('any')
+url='https://github.com/LukaJakimovski/budgeting_tool'
+license=('MIT')
+depends=('nodejs>=20')
+makedepends=('git' 'npm')
+backup=('etc/tally-server.env')
+source=("tally::git+${TALLY_GIT:-https://github.com/LukaJakimovski/budgeting_tool.git}#${TALLY_REF:-branch=main}")
+sha256sums=('SKIP')
+
+build() {
+  cd tally/app
+  export npm_config_cache="$srcdir/npm-cache"
+  npm ci --no-audit --no-fund
+  npm run build
+}
+
+package() {
+  cd tally
+  install -dm755 "$pkgdir/usr/lib/tally-server/server" "$pkgdir/usr/lib/tally-server/app"
+  cp -r server/src server/package.json "$pkgdir/usr/lib/tally-server/server/"
+  cp -r app/dist "$pkgdir/usr/lib/tally-server/app/"
+  install -Dm644 server/deploy/tally-server.service "$pkgdir/usr/lib/systemd/system/tally-server.service"
+  sed -i 's#/opt/tally#/usr/lib/tally-server#g; s#EnvironmentFile=.*#EnvironmentFile=/etc/tally-server.env#' "$pkgdir/usr/lib/systemd/system/tally-server.service"
+  install -Dm644 server/deploy/tally-server.env "$pkgdir/etc/tally-server.env"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -1,0 +1,6 @@
+**/node_modules
+app/dist
+app/android
+desktop/src-tauri/target
+server/data
+.git

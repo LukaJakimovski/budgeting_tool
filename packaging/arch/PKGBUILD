@@ -1,0 +1,46 @@
+# Tally desktop client for Arch / CachyOS / Manjaro.
+#
+#   cd packaging/arch && makepkg -si
+#
+# Builds from git. Override the source with TALLY_GIT (e.g. file:///path/to/checkout)
+# and TALLY_REF (e.g. branch=my-branch or commit=<sha>). See docs/building.md.
+pkgname=tally-budget
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Local-first budgeting app (Tally) — desktop client'
+arch=('x86_64' 'aarch64')
+url='https://github.com/LukaJakimovski/budgeting_tool'
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'libsoup3' 'glib2' 'cairo' 'pango' 'gdk-pixbuf2' 'hicolor-icon-theme')
+makedepends=('git' 'nodejs' 'npm' 'rust' 'cargo' 'pkgconf')
+options=('!lto' '!debug')
+source=("tally::git+${TALLY_GIT:-https://github.com/LukaJakimovski/budgeting_tool.git}#${TALLY_REF:-branch=main}")
+sha256sums=('SKIP')
+
+prepare() {
+  cd tally
+  export npm_config_cache="$srcdir/npm-cache"
+  npm --prefix app ci --no-audit --no-fund
+  npm --prefix desktop ci --no-audit --no-fund
+}
+
+build() {
+  cd tally
+  export npm_config_cache="$srcdir/npm-cache"
+  export CARGO_HOME="$srcdir/cargo-home"
+  npm --prefix app run build
+  cd desktop
+  npx tauri build --no-bundle
+}
+
+package() {
+  cd tally
+  install -Dm755 desktop/src-tauri/target/release/tally "$pkgdir/usr/bin/tally"
+  install -Dm644 packaging/linux/io.github.lukajakimovski.tally.desktop "$pkgdir/usr/share/applications/io.github.lukajakimovski.tally.desktop"
+  install -Dm644 desktop/src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/tally.png"
+  install -Dm644 desktop/src-tauri/icons/64x64.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/tally.png"
+  install -Dm644 desktop/src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/tally.png"
+  install -Dm644 desktop/src-tauri/icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/tally.png"
+  install -Dm644 app/public/icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/tally.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tally",
+  "version": "0.1.0",
+  "identifier": "io.github.lukajakimovski.tally",
+  "build": {
+    "frontendDist": "../../app/dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Tally",
+        "width": 1180,
+        "height": 800,
+        "minWidth": 360,
+        "minHeight": 520
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https: http:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "rpm", "appimage"],
+    "category": "Finance",
+    "shortDescription": "Local-first budgeting",
+    "longDescription": "Log purchases in seconds, set budgets and see where your money goes. Data stays on your devices and syncs through your own server.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"],
+    "linux": {
+      "deb": { "depends": [] }
+    }
+  }
+}

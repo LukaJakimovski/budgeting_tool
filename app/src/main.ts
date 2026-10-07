@@ -48,6 +48,19 @@ async function registerServiceWorker() {
   }
 }
 
+/** Android hardware back button: close the open sheet, else go back, else leave the app. */
+async function androidBackButton() {
+  if (platform() !== 'android') return;
+  const { App } = await import('@capacitor/app');
+  App.addListener('backButton', ({ canGoBack }) => {
+    const open = document.querySelector('dialog[open]') as HTMLDialogElement | null;
+    if (open) open.dispatchEvent(new Event('cancel', { cancelable: true }));
+    else if (ui.entry) ui.closeEntry();
+    else if (canGoBack && location.hash && location.hash !== '#/') history.back();
+    else App.exitApp();
+  });
+}
+
 async function start() {
   try {
     await repo.init();
@@ -66,6 +79,7 @@ async function start() {
   document.documentElement.dataset.platform = platform();
   mount(App, { target: document.getElementById('app')! });
   registerServiceWorker();
+  androidBackButton().catch(() => undefined);
   emit('app:ready', {});
 }
 

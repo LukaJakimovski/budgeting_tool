@@ -1,0 +1,16 @@
+# docker compose -f server/docker-compose.yml up -d --build
+services:
+  tally:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    container_name: tally
+    restart: unless-stopped
+    # Only reachable from this machine; expose with `tailscale serve` (see docs/self-hosting.md).
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./data:/data
+    environment:
+      TALLY_BACKUP_KEEP_DAILY: "14"
+      # TALLY_SIGNUP_SECRET: "change-me"

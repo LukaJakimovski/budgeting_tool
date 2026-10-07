@@ -1,0 +1,26 @@
+# systemd unit for the Tally sync server.
+#   sudo cp tally-server.service /etc/systemd/system/ && sudo systemctl enable --now tally-server
+[Unit]
+Description=Tally sync server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tally
+Group=tally
+WorkingDirectory=/opt/tally/server
+EnvironmentFile=-/opt/tally/tally-server.env
+ExecStart=/usr/bin/env node /opt/tally/server/src/index.js serve
+Restart=on-failure
+RestartSec=5
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/tally
+StateDirectory=tally
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Tally
+GenericName=Budget
+Comment=Local-first budgeting: log purchases, set budgets, see where your money goes
+Exec=tally
+Icon=tally
+Terminal=false
+Categories=Office;Finance;
+Keywords=budget;money;expenses;finance;spending;
+StartupWMClass=tally
