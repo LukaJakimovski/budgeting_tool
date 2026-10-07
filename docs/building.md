@@ -19,7 +19,7 @@ of the above and, for tags, attaches them to a GitHub release.
 * Linux app: Rust (`rustup`), plus WebKitGTK 4.1 dev packages
   * Arch/CachyOS: `sudo pacman -S --needed rust webkit2gtk-4.1 base-devel`
   * Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential`
-* Android: JDK 21 and the Android SDK (Android Studio, or the command-line tools with `platforms;android-36` and `build-tools`)
+* Android: **JDK 21** (it can sit next to a newer default JDK) and the Android SDK — see [Android](#android)
 
 ## Web app
 
@@ -69,17 +69,62 @@ npm run dev          # native window on the Vite dev server, with hot reload
 
 ## Android
 
+### One-time setup (Arch / CachyOS)
+
+1. **JDK 21** — installed *alongside* whatever Java you use day to day:
+   ```bash
+   sudo pacman -S jdk21-openjdk
+   ```
+   You don't need to switch your default (`archlinux-java`). Newer JDKs
+   (26, 27…) are too new for the Android build tools; the project tells Gradle
+   to run on JDK 21 (`app/android/gradle/gradle-daemon-jvm.properties`) and
+   finds it in `/usr/lib/jvm` automatically.
+2. **Android SDK**, either:
+   * **Android Studio** (`paru -S android-studio`): open it once and finish the
+     setup wizard — it installs the SDK into `~/Android/Sdk`; or
+   * **command-line tools only**: download *Command line tools only* from
+     <https://developer.android.com/studio#command-line-tools-only>, then
+     ```bash
+     mkdir -p ~/Android/Sdk/cmdline-tools
+     unzip commandlinetools-linux-*.zip -d ~/Android/Sdk/cmdline-tools
+     mv ~/Android/Sdk/cmdline-tools/cmdline-tools ~/Android/Sdk/cmdline-tools/latest
+     ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+     ```
+     Gradle downloads the platform and build tools it needs on the first build.
+
+(Debian/Ubuntu: `sudo apt install openjdk-21-jdk`; Fedora: `sudo dnf install java-21-openjdk-devel`.)
+
+### Build
+
 ```bash
-cd app
-npm ci
-npm run build
-npx cap sync android          # copies dist/ into the Android project
-cd android
-./gradlew assembleDebug       # → app/build/outputs/apk/debug/app-debug.apk
+app/android/build-apk.sh            # debug APK
+app/android/build-apk.sh --install  # …and install it on a USB-connected phone (USB debugging on)
 ```
 
-Install on your phone with `adb install -r app-debug.apk`, or copy the file to
-the phone and open it (allow "install unknown apps" for your file manager).
+The script picks JDK 21 even if your default Java is newer, finds the SDK
+(`$ANDROID_HOME`, `~/Android/Sdk` or `/opt/android-sdk`), accepts the SDK
+licences, builds the web app, copies it into the Android project
+(`cap sync`) and runs Gradle. The APK ends up in
+`app/android/app/build/outputs/apk/debug/app-debug.apk`. Copy it to your phone
+and open it (allow "install unknown apps" for your file manager), or use
+`adb install -r`.
+
+The same steps by hand:
+
+```bash
+cd app && npm ci && npm run build && npx cap sync android
+cd android && JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew assembleDebug
+```
+
+### Troubleshooting
+
+| Error | Cause / fix |
+|---|---|
+| `Unsupported class file major version 69/70/71…` (or `BUG! exception in phase 'semantic analysis'`) | Gradle is running on a JDK that's too new (71 = Java 27). Install JDK 21 (above) or use `build-apk.sh`. |
+| `Unable to download toolchain matching the requirements ({languageVersion=21 …})` | No JDK 21 installed — install it (above). |
+| `SDK location not found` | Set `ANDROID_HOME` or create `app/android/local.properties` with `sdk.dir=/path/to/Sdk` (the script does this for you). |
+| `Failed to install the following Android SDK packages … licences have not been accepted` | `~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --licenses` |
+| Build can't write to `/opt/android-sdk` | That SDK (from the AUR) is owned by root; use `~/Android/Sdk` instead, or install the missing packages with `sudo sdkmanager …`. |
 
 ### Signed release builds (recommended for updates)
 
