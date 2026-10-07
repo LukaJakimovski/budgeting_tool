@@ -103,7 +103,7 @@ re-encoded as JPEG (longest side ≤ 2400 px) before storing.
 {
   "type": "merchant",
   "name": "Tim Hortons",
-  "aliases": ["tim hortons #"],        // lower-case substrings matched in bank CSVs
+  "aliases": ["tim hortons #"],        // lower-case text looked for in bank CSV lines (after channel, type and reference number)
   "defaults": {                        // filled into new purchases at this merchant
     "categoryId": "cat_coffee",
     "paymentMethodId": "pm_debit",

@@ -29,7 +29,8 @@
 
 ```
 app/                      the web app (Svelte 5 + TypeScript + Vite)
-  src/lib/core/           pure logic, no UI: types, money, dates, ledger, budgets, recurring, hlc, ids
+  src/lib/core/           pure logic, no UI: types, money, dates, ledger, budgets, recurring, hlc, ids,
+                          banktext (bank statement text → merchant names)
   src/lib/db/             IndexedDB (idb.ts) and the reactive repository (repo.svelte.ts)
   src/lib/sync/           sync engine and crypto
   src/lib/theme/          palette generator, styles (one file each), fonts, chart palette
@@ -39,6 +40,7 @@ app/                      the web app (Svelte 5 + TypeScript + Vite)
   src/lib/actions.ts      domain operations used by screens (save purchase, recurring…)
   src/lib/analysis.ts     view-models for stats and widgets
   src/lib/importers.ts    bank CSV import (CIBC preset)
+  src/lib/bulk.ts         bulk edits (History selection), merging merchants, tidy-up suggestions — all undoable
   src/lib/exporters.ts    JSON / CSV / SQLite export
   src/lib/backup.ts       backup reminders, zip backups, restore
   src/lib/attachments.ts  receipts: image shrinking, local storage, lazy download, clean-up

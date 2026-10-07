@@ -4,7 +4,8 @@
  * Works with any CSV via column mapping; the CIBC preset matches the files
  * CIBC online banking exports (no header row):
  *   date (YYYY-MM-DD), description, debit, credit[, card number]
- * Rows are matched to merchants by alias, checked against previous imports
+ * Bank text is cleaned into merchant names (core/banktext.ts); rows are
+ * matched to merchants by name or alias, checked against previous imports
  * (fingerprint) and against purchases you already entered by hand (same
  * amount within ±3 days), so importing a statement never double-counts.
  */
@@ -12,7 +13,10 @@ import { repo } from './db/repo.svelte';
 import { parseAmount } from './core/money';
 import { daysBetween, makeOccurredAt, txDate } from './core/dates';
 import { toBase, findOrCreateMerchant } from './actions';
+import { cleanDescriptor, isRawBankLine, merchantKey, merchantGroupKey, parseBankText } from './core/banktext';
 import type { ID, Merchant, Transaction, TxKind } from './core/types';
+
+export { cleanDescriptor };
 
 export function parseCSV(text: string, delimiter?: string): string[][] {
   const src = text.replace(/^﻿/, '');
@@ -137,42 +141,41 @@ export interface ImportRow {
   fingerprint: string;
   merchantId: ID | null;
   categoryId: ID | null;
-  /** What we suggest doing with it. */
+  /** What we suggest doing with it. Importing a `duplicate` row updates the transaction it was imported as. */
   action: 'import' | 'skip';
   reason: '' | 'duplicate' | 'matches-existing' | 'payment' | 'invalid';
+  /** The existing transaction: the one imported from this row (duplicate) or entered by hand (matches-existing). */
   matchId: ID | null;
 }
 
-/** Clean bank noise: "TIM HORTONS #1234 TORONTO, ON" → "Tim Hortons". */
-export function cleanDescriptor(raw: string): string {
-  let s = raw
-    .replace(/^(point of sale - )?(interac )?(retail purchase|purchase|internet banking|e-transfer|pre-authorized debit|online banking)\s*/i, '')
-    .replace(/\b\d{6,}\b/g, ' ')
-    .replace(/[#*]\s*\w*\d\w*/g, ' ')
-    .replace(/\b(sq|tst|pp|sp|paypal)\s*\*/gi, ' ')
-    .replace(/\s{2,}.*$/, '')
-    .replace(/,?\s+(on|bc|ab|qc|mb|sk|ns|nb|nl|pe|yt|nt|nu)\s*$/i, '')
-    .replace(/\s+\d+$/, '')
-    .trim();
-  // Drop a trailing city name when there are more than two words.
-  const words = s.split(/\s+/);
-  if (words.length > 3) s = words.slice(0, 3).join(' ');
-  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).trim() || raw.trim();
+/**
+ * Finds the merchant a bank row belongs to. Names and aliases are looked for in
+ * the merchant part of the text (channel, transaction type and reference number
+ * removed), longest first; failing that, a merchant whose name cleans to the
+ * same thing ("TIM HORTONS #53" → an existing "Tim Hortons").
+ */
+export function merchantMatcher(merchants: Merchant[]): (description: string) => Merchant | null {
+  // Merchants named with a whole bank line (older imports made one per line)
+  // aren't reused: the row gets a clean name and Settings → Merchants → Tidy up
+  // folds the old ones in.
+  const usable = merchants.filter((m) => !isRawBankLine(m.name));
+  const names = usable.flatMap((m) => [...m.aliases, m.name.toLowerCase()].filter((a) => a.length >= 3).map((a) => [a, m] as const));
+  names.sort((a, b) => b[0].length - a[0].length);
+  const byKey = new Map<string, Merchant>();
+  for (const m of usable) {
+    const k = merchantGroupKey(m.name);
+    const cur = byKey.get(k);
+    if (k && (!cur || (cur.archived && !m.archived))) byKey.set(k, m);
+  }
+  return (description) => {
+    const d = parseBankText(description).core.toLowerCase().replace(/\s+/g, ' ');
+    for (const [alias, m] of names) if (d.includes(alias)) return m;
+    return byKey.get(merchantKey(cleanDescriptor(description))) ?? null;
+  };
 }
 
 export function matchMerchant(description: string, merchants: Merchant[]): Merchant | null {
-  const d = description.toLowerCase();
-  let best: Merchant | null = null;
-  let bestLen = 0;
-  for (const m of merchants) {
-    for (const alias of [...m.aliases, m.name.toLowerCase()]) {
-      if (alias.length >= 3 && d.includes(alias) && alias.length > bestLen) {
-        best = m;
-        bestLen = alias.length;
-      }
-    }
-  }
-  return best;
+  return merchantMatcher(merchants)(description);
 }
 
 function fingerprintOf(date: string, description: string, amount: number, occurrence: number): string {
@@ -184,9 +187,9 @@ function fingerprintOf(date: string, description: string, amount: number, occurr
 
 export function buildRows(rows: string[][], m: Mapping): ImportRow[] {
   const body = m.hasHeader ? rows.slice(1) : rows;
-  const merchants = repo.merchants(true);
+  const match = merchantMatcher(repo.merchants(true));
   const existing = repo.transactions();
-  const byRef = new Set(existing.map((t) => t.importRef).filter(Boolean));
+  const byRef = new Map(existing.filter((t) => t.importRef).map((t) => [t.importRef!, t.id]));
   const usedMatches = new Set<ID>();
   const seen = new Map<string, number>();
   const out: ImportRow[] = [];
@@ -212,6 +215,9 @@ export function buildRows(rows: string[][], m: Mapping): ImportRow[] {
         kind = 'refund';
       }
     }
+    const bank = parseBankText(description);
+    // Money in on a chequing account: pay and deposits are income, not refunds.
+    if (kind === 'refund' && /^(pay|payroll\s+deposit|deposit)$/i.test(bank.type)) kind = 'income';
     if (!date || !amount) {
       out.push({ index: i, date: date ?? '', description, amount, kind, fingerprint: '', merchantId: null, categoryId: null, action: 'skip', reason: 'invalid', matchId: null });
       continue;
@@ -220,7 +226,7 @@ export function buildRows(rows: string[][], m: Mapping): ImportRow[] {
     const occ = (seen.get(key) ?? 0) + 1;
     seen.set(key, occ);
     const fingerprint = fingerprintOf(date, description, amount, occ);
-    const merchant = matchMerchant(description, merchants);
+    const merchant = match(description);
     const row: ImportRow = {
       index: i,
       date,
@@ -237,8 +243,9 @@ export function buildRows(rows: string[][], m: Mapping): ImportRow[] {
     if (byRef.has(fingerprint)) {
       row.action = 'skip';
       row.reason = 'duplicate';
-    } else if (kind === 'refund' && /payment|thank you|paiement|transfer/i.test(description)) {
-      // Card payments and transfers aren't income or refunds.
+      row.matchId = byRef.get(fingerprint)!;
+    } else if (kind === 'refund' && (/payment|thank you|paiement/i.test(description) || /transfer/i.test(bank.type || bank.core))) {
+      // Card payments and transfers between your own accounts aren't income or refunds.
       row.action = 'skip';
       row.reason = 'payment';
     } else {
@@ -262,10 +269,15 @@ export function buildRows(rows: string[][], m: Mapping): ImportRow[] {
   return out;
 }
 
-/** Create transactions for rows marked "import"; link matched manual entries to the bank row. */
-export async function commitImport(rows: ImportRow[], m: Mapping, newMerchantNames: Map<number, string>): Promise<number> {
+/**
+ * Create transactions for rows marked "import"; link matched manual entries to
+ * the bank row. Already-imported rows marked "import" update the transaction
+ * they were imported as (merchant, category, type) instead of adding it again.
+ */
+export async function commitImport(rows: ImportRow[], m: Mapping, newMerchantNames: Map<number, string>): Promise<{ imported: number; updated: number }> {
   const docs: Transaction[] = [];
   const merchantCache = new Map<string, Merchant>();
+  let updated = 0;
   for (const r of rows) {
     if (r.action !== 'import') {
       if (r.reason === 'matches-existing' && r.matchId) {
@@ -281,8 +293,9 @@ export async function commitImport(rows: ImportRow[], m: Mapping, newMerchantNam
       let mer = merchantCache.get(key);
       if (!mer) {
         mer = await findOrCreateMerchant(newName);
-        const alias = r.description.toLowerCase().replace(/\s+\d.*$/, '').trim();
-        if (alias.length >= 3 && !mer.aliases.includes(alias)) {
+        // Renamed from what the bank calls it ("Tims" for TIM HORTONS)? Remember the bank's name.
+        const alias = cleanDescriptor(r.description).toLowerCase();
+        if (alias.length >= 3 && merchantKey(alias) !== merchantKey(mer.name) && !mer.aliases.includes(alias)) {
           mer = await repo.update<Merchant>(mer.id, { aliases: [...mer.aliases, alias] });
         }
         merchantCache.set(key, mer);
@@ -290,6 +303,19 @@ export async function commitImport(rows: ImportRow[], m: Mapping, newMerchantNam
       merchantId = mer.id;
     }
     const merchant = merchantId ? repo.get<Merchant>(merchantId) : undefined;
+    const previous = r.reason === 'duplicate' && r.matchId ? repo.get<Transaction>(r.matchId) : undefined;
+    if (previous) {
+      docs.push({
+        ...previous,
+        kind: r.kind,
+        merchantId: merchantId ?? previous.merchantId,
+        categoryId: previous.splits.length ? previous.categoryId : (r.categoryId ?? merchant?.defaults.categoryId ?? previous.categoryId),
+        paymentMethodId: m.paymentMethodId ?? previous.paymentMethodId,
+        bankDescription: r.description,
+      });
+      updated++;
+      continue;
+    }
     docs.push({
       id: repo.newId('transaction'),
       type: 'transaction',
@@ -315,6 +341,6 @@ export async function commitImport(rows: ImportRow[], m: Mapping, newMerchantNam
   }
   // Save in chunks so a big statement doesn't block the UI.
   for (let i = 0; i < docs.length; i += 300) await repo.save(docs.slice(i, i + 300));
-  return rows.filter((r) => r.action === 'import').length;
+  return { imported: rows.filter((r) => r.action === 'import').length - updated, updated };
 }
 
