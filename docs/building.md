@@ -52,6 +52,24 @@ TALLY_REF=branch=claude/nifty-edison-av2x0k makepkg -si
 TALLY_GIT=file://$HOME/code/budgeting_tool TALLY_REF=branch=main makepkg -si
 ```
 
+### Updating
+
+Run the same command again from `packaging/arch`:
+
+```bash
+cd packaging/arch
+makepkg -si                                              # builds the newest main
+TALLY_REF=branch=claude/nifty-edison-av2x0k makepkg -si  # …or the newest of a branch
+```
+
+makepkg fetches the new commits into its cached clone (`packaging/arch/tally/`),
+the package version follows the commit (`0.1.0.r58.g280a7c2`), and pacman
+upgrades in place. Quit Tally first; your data
+(`~/.local/share/io.github.lukajakimovski.tally/`) is untouched.
+
+If a build was interrupted or you switched branches and something looks stale,
+`makepkg -sifC` forces a clean rebuild.
+
 Uninstall with `sudo pacman -R tally-budget`. Data lives in
 `~/.local/share/io.github.lukajakimovski.tally/`.
 
