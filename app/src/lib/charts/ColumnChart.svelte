@@ -146,7 +146,7 @@ export interface Column {
     font-variant-numeric: tabular-nums;
   }
   .bar {
-    fill: color-mix(in srgb, var(--accent) 55%, var(--surface));
+    fill: color-mix(in srgb, var(--accent) 72%, var(--surface));
     transition: fill 0.12s;
   }
   .bar.hl {

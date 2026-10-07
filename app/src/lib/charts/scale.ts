@@ -10,14 +10,14 @@ export function niceTicks(max: number, count = 4): number[] {
   return ticks;
 }
 
-/** Pick roughly `n` evenly spaced indices for axis labels. */
+/** Pick at most `n` evenly spaced indices for axis labels (never adjacent ones). */
 export function sparseIndices(len: number, n: number): Set<number> {
   const out = new Set<number>();
   if (len <= n) {
     for (let i = 0; i < len; i++) out.add(i);
     return out;
   }
-  const step = (len - 1) / (n - 1);
-  for (let i = 0; i < n; i++) out.add(Math.round(i * step));
+  const step = Math.ceil(len / Math.max(1, n));
+  for (let i = 0; i < len; i += step) out.add(i);
   return out;
 }

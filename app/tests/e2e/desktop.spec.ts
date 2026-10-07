@@ -22,6 +22,8 @@ test('dashboard can be customised', async ({ page }) => {
   await page.getByRole('button', { name: /Calendar heatmap/ }).click();
   await page.getByRole('button', { name: 'Remove widget' }).first().click();
   await page.getByRole('button', { name: 'Done' }).click();
+  // Edit mode ends once the layout is saved.
+  await expect(page.getByRole('button', { name: 'Customise' })).toBeVisible();
   await page.reload();
   await expect(page.getByText('Daily spending · 26 weeks')).toBeVisible();
   await expect(page.getByText('Spent · Today')).toHaveCount(0);

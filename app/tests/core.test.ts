@@ -199,3 +199,15 @@ describe('recurring', () => {
     expect(due[due.length - 1].date).toBe('2026-10-07');
   });
 });
+
+import { sparseIndices, niceTicks } from '../src/lib/charts/scale';
+describe('chart scales', () => {
+  it('never labels adjacent columns when thinning', () => {
+    const idx = [...sparseIndices(30, 16)].sort((a, b) => a - b);
+    for (let i = 1; i < idx.length; i++) expect(idx[i] - idx[i - 1]).toBeGreaterThan(1);
+    expect(sparseIndices(5, 10).size).toBe(5);
+  });
+  it('makes round ticks', () => {
+    expect(niceTicks(1450, 4)).toEqual([0, 500, 1000, 1500]);
+  });
+});
