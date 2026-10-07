@@ -127,6 +127,30 @@ Response:
 Store `seq` as the new cursor. If `more` is true, call again with
 `since = seq`.
 
+### Receipt files — blobs (auth)
+
+Attachment bytes don't go through the document log (they're big and never
+change). After each document round the client uploads queued files and
+performs queued deletions; other devices download a file the first time it's
+opened (or all at once via *Settings → Backup → Keep all receipts on this
+device*).
+
+* `PUT /api/v1/vaults/:vault/blobs/:id` — body = raw bytes
+  (`application/octet-stream`), up to `TALLY_MAX_FILE_MB` (20 MB). Idempotent.
+* `GET /api/v1/vaults/:vault/blobs/:id` — the bytes; `404` if unknown. If the
+  live copy was deleted but a backup copy exists, the backup copy is served.
+* `DELETE /api/v1/vaults/:vault/blobs/:id`
+* `GET /api/v1/vaults/:vault/blobs` → `{ "blobs": [{ "id", "size" }] }`
+
+Ids are random (`att_…`, `[A-Za-z0-9_-]{1,100}`), so files are immutable and
+never content-addressed (which would leak "this exact photo exists" for
+encrypted vaults). In encrypted vaults the body is
+`nonce[12] ‖ AES-256-GCM(bytes)` with `blob:<id>` as associated data.
+
+Uploads use a 3-minute timeout and retry with the usual back-off, so a
+receipt taken on a weak connection simply uploads later; the cloud icon counts
+it as a pending change until then.
+
 ### Backups (auth)
 
 * `GET /api/v1/vaults/:vault/backups` → `{ "backups": [{ "name", "date", "size", "createdAt" }] }`

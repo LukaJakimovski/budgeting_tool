@@ -19,7 +19,8 @@
   of the server's disk must still brute-force the passphrase. Use a long,
   unique passphrase (a few random words).
 * With **end-to-end encryption on** (the default), the server stores only
-  ciphertext; backups made by the server are encrypted too. The trade-off: the
+  ciphertext — documents *and* receipt photos; backups made by the server are
+  encrypted too. The trade-off: the
   server can't produce a readable export for scripts — export from the app.
 * With it **off**, the server can read your data (and keeps
   `exports/<vault>.json`). Reasonable when the server is your own Pi on your own

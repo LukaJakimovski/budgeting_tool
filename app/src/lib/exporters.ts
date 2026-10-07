@@ -37,6 +37,7 @@ function csvCell(v: unknown): string {
 export const CSV_COLUMNS = [
   'transaction_id', 'line', 'date', 'time', 'kind', 'name', 'merchant', 'amount', 'currency', 'amount_base', 'base_currency',
   'category', 'category_path', 'tags', 'payment_method', 'channel', 'description', 'purpose', 'split_note', 'bank_description',
+  'receipts',
 ] as const;
 
 export function transactionLines(): Record<(typeof CSV_COLUMNS)[number], string>[] {
@@ -69,6 +70,7 @@ export function transactionLines(): Record<(typeof CSV_COLUMNS)[number], string>
         purpose: tx.purpose,
         split_note: split?.note ?? '',
         bank_description: tx.bankDescription ?? '',
+        receipts: (tx.attachments ?? []).map((a) => a.id).join(';'),
       });
     });
   }
@@ -100,6 +102,7 @@ export async function exportSQLite(): Promise<Uint8Array> {
     );
     CREATE TABLE transaction_tags (transaction_id TEXT, tag_id TEXT);
     CREATE TABLE splits (transaction_id TEXT, line INTEGER, amount_minor INTEGER, category_id TEXT, note TEXT, tag_ids TEXT);
+    CREATE TABLE attachments (id TEXT PRIMARY KEY, transaction_id TEXT, name TEXT, mime TEXT, size INTEGER, width INTEGER, height INTEGER, added_at TEXT);
     CREATE TABLE budgets (id TEXT PRIMARY KEY, name TEXT, amount_minor INTEGER, period_unit TEXT, period_count INTEGER, period_anchor TEXT, filter_json TEXT, warn_at REAL);
     CREATE TABLE documents (id TEXT PRIMARY KEY, type TEXT, json TEXT);
     CREATE TABLE transaction_lines (${CSV_COLUMNS.map((c) => `${c} TEXT`).join(', ')});
@@ -121,6 +124,7 @@ export async function exportSQLite(): Promise<Uint8Array> {
     txs.map((t: Transaction) => [t.id, t.kind, t.occurredAt, txDate(t.occurredAt), txTime(t.occurredAt), t.amount, t.currency, t.baseAmount, t.baseCurrency, t.merchantId, t.name, t.categoryId, t.paymentMethodId, t.channel, t.description, t.purpose, t.recurringId ?? null, t.bankDescription ?? null, t.createdAt]),
   );
   ins('INSERT INTO transaction_tags VALUES (?,?)', txs.flatMap((t) => t.tagIds.map((g) => [t.id, g])));
+  ins('INSERT INTO attachments VALUES (?,?,?,?,?,?,?,?)', txs.flatMap((t) => (t.attachments ?? []).map((a) => [a.id, t.id, a.name, a.mime, a.size, a.width ?? null, a.height ?? null, a.addedAt])));
   ins('INSERT INTO splits VALUES (?,?,?,?,?,?)', txs.flatMap((t) => t.splits.map((s, i) => [t.id, i + 1, s.amount, s.categoryId, s.note, s.tagIds.join(';')])));
   ins('INSERT INTO budgets VALUES (?,?,?,?,?,?,?,?)', repo.list('budget').map((b) => [b.id, b.name, b.amount, b.period.unit, b.period.count, b.period.anchor, JSON.stringify(b.filter), b.warnAt]));
   ins('INSERT INTO documents VALUES (?,?,?)', repo.allDocs(false).map((d) => [d.id, d.type, JSON.stringify(d)]));

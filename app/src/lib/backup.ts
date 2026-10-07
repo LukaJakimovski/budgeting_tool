@@ -9,7 +9,9 @@ import { sync } from './sync/sync.svelte';
 import { exportJSON, stamp } from './exporters';
 import { saveFile } from './platform';
 import { emit } from './modules/events';
-import { SCHEMA_VERSION, type Doc } from './core/types';
+import { SCHEMA_VERSION, type Attachment, type Doc, type Transaction } from './core/types';
+import { extensionFor, loadAttachment } from './attachments';
+import { strToU8, strFromU8, unzipSync, zipSync, type Zippable } from 'fflate';
 
 const KEY = 'tally-last-backup';
 
@@ -36,8 +38,36 @@ export function backupStatus(): { due: boolean; message: string; last: number | 
   };
 }
 
-export async function downloadBackup(): Promise<boolean> {
-  const res = await saveFile(`tally-backup-${stamp()}.json`, exportJSON(), 'application/json');
+function liveAttachments(): Attachment[] {
+  return (repo.list('transaction') as Transaction[]).flatMap((t) => t.attachments ?? []);
+}
+
+/**
+ * Build a backup: plain JSON, or — when there are receipts — a .zip with
+ * tally-backup.json plus receipts/<id>.<ext>. Receipts not on this device are
+ * downloaded from the sync server first when possible.
+ */
+export async function buildBackup(): Promise<{ name: string; data: string | Uint8Array; mime: string; missing: number }> {
+  const json = exportJSON();
+  const atts = liveAttachments();
+  if (!atts.length) return { name: `tally-backup-${stamp()}.json`, data: json, mime: 'application/json', missing: 0 };
+  const files: Zippable = { 'tally-backup.json': [strToU8(json), { level: 6 }] };
+  let missing = 0;
+  for (const a of atts) {
+    const blob = await loadAttachment(a).catch(() => null);
+    if (!blob) {
+      missing++;
+      continue;
+    }
+    // Photos are already compressed; store them as-is.
+    files[`receipts/${a.id}.${extensionFor(a.mime)}`] = [new Uint8Array(await blob.arrayBuffer()), { level: 0 }];
+  }
+  return { name: `tally-backup-${stamp()}.zip`, data: zipSync(files), mime: 'application/zip', missing };
+}
+
+export async function downloadBackup(): Promise<{ saved: boolean; missing: number }> {
+  const b = await buildBackup();
+  const res = await saveFile(b.name, b.data, b.mime);
   if (res === 'saved') {
     try {
       localStorage.setItem(KEY, String(Date.now()));
@@ -45,16 +75,17 @@ export async function downloadBackup(): Promise<boolean> {
       /* ignore */
     }
     emit('backup:created', { kind: 'local', at: new Date().toISOString() });
-    repo.version; // keep reactive readers fresh
-    return true;
+    return { saved: true, missing: b.missing };
   }
-  return false;
+  return { saved: false, missing: b.missing };
 }
 
 export interface ParsedBackup {
   documents: Doc[];
   exportedAt: string | null;
   counts: Record<string, number>;
+  /** Receipt files from a .zip backup, by attachment id. */
+  files?: Map<string, Uint8Array>;
 }
 
 /** Accepts a Tally JSON export or a server snapshot (unencrypted). */
@@ -74,8 +105,32 @@ export function parseBackup(text: string): ParsedBackup {
   return { documents: docs, exportedAt: data?.exportedAt ?? null, counts };
 }
 
+/** Read a backup file: .json, or .zip with receipts. */
+export async function parseBackupFile(file: Blob): Promise<ParsedBackup> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) return parseBackup(strFromU8(bytes));
+  const entries = unzipSync(bytes);
+  const json = entries['tally-backup.json'];
+  if (!json) throw new Error('This zip has no tally-backup.json.');
+  const parsed = parseBackup(strFromU8(json));
+  const files = new Map<string, Uint8Array>();
+  for (const [path, data] of Object.entries(entries)) {
+    const m = path.match(/^receipts\/([A-Za-z0-9_-]+)\.\w+$/);
+    if (m) files.set(m[1], data);
+  }
+  parsed.files = files;
+  if (files.size) parsed.counts.receipt = files.size;
+  return parsed;
+}
+
 /** merge: keep newer of each document. replace: make everything equal to the backup (on all devices). */
 export async function restore(b: ParsedBackup, mode: 'merge' | 'replace'): Promise<void> {
+  if (b.files?.size) {
+    const mimes = new Map<string, string>();
+    for (const d of b.documents) if (d.type === 'transaction') for (const a of (d as Transaction).attachments ?? []) mimes.set(a.id, a.mime);
+    for (const [id, data] of b.files) await repo.db.putBlob({ id, mime: mimes.get(id) ?? 'application/octet-stream', data }, true);
+    void sync.refreshBlobPending();
+  }
   if (mode === 'replace') await repo.replaceAll(b.documents);
   else await repo.merge(b.documents, true);
 }

@@ -108,7 +108,8 @@ export function isFilterEmpty(f: Filter | undefined): boolean {
     !f.kinds?.length &&
     !f.text?.trim() &&
     f.minAmount == null &&
-    f.maxAmount == null
+    f.maxAmount == null &&
+    f.hasAttachment == null
   );
 }
 
@@ -134,6 +135,7 @@ export function compileFilter(f: Filter | undefined, lookup: Lookup): Matcher {
     if (kinds && !kinds.has(tx.kind)) return false;
     if (filter.minAmount != null && a.amount < filter.minAmount) return false;
     if (filter.maxAmount != null && a.amount > filter.maxAmount) return false;
+    if (filter.hasAttachment != null && ((tx.attachments?.length ?? 0) > 0) !== filter.hasAttachment) return false;
     if (words.length) {
       const hay = searchText(a, lookup);
       if (!words.every((w) => hay.includes(w))) return false;

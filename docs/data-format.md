@@ -62,7 +62,8 @@ out**; the sync log and server snapshots keep them.
   "splits": [],                   // see below
   "recurringId": null,            // set when created by a recurring rule
   "importRef": null,              // fingerprint of the bank row it came from / was matched to
-  "bankDescription": null         // raw bank statement text
+  "bankDescription": null,        // raw bank statement text
+  "attachments": []               // receipts, see below (may be absent on older documents)
 }
 ```
 
@@ -83,6 +84,18 @@ transaction's own tags apply to every split) and a `note`:
 
 The base-currency value of each split is `baseAmount` divided in proportion
 (remainders go to the largest parts, so the parts always add up exactly).
+
+**Attachments (receipts):** photos or PDFs. The document holds only metadata;
+the bytes are stored separately under the attachment `id` (a "blob" — on each
+device in IndexedDB, on the server in `vaults/<vault>/blobs/<id>`). Photos are
+re-encoded as JPEG (longest side ≤ 2400 px) before storing.
+
+```json
+"attachments": [
+  { "id": "att_01k6x4…", "name": "receipt.jpg", "mime": "image/jpeg", "size": 412345,
+    "width": 1800, "height": 2400, "addedAt": "2026-10-07T18:40:02.000Z" }
+]
+```
 
 ### `merchant`
 
@@ -189,7 +202,8 @@ subcategories.
 {
   "categoryIds": ["cat_food"], "tagIds": [], "merchantIds": [], "paymentMethodIds": [],
   "channels": ["online"], "kinds": ["expense"], "text": "coffee",
-  "minAmount": 500, "maxAmount": null       // base-currency minor units
+  "minAmount": 500, "maxAmount": null,      // base-currency minor units
+  "hasAttachment": true                     // only with (true) / without (false) a receipt
 }
 ```
 
@@ -210,6 +224,17 @@ subcategories.
 This is also the backup format. Restoring it (Settings → Backup) either merges
 (newer revision of each document wins) or replaces everything.
 
+### Backup with receipts — `tally-backup-….zip`
+
+When any transaction has receipts, *Download backup* produces a zip:
+
+```
+tally-backup.json            the JSON export above
+receipts/att_01k6x4….jpg     one file per attachment, named <attachment id>.<ext>
+```
+
+Restoring the zip brings the receipts back too.
+
 ### CSV — `tally-transactions-….csv`
 
 One row per **transaction line** (a split purchase gives one row per split), so
@@ -217,14 +242,16 @@ summing `amount_base` grouped by `category` is always right.
 
 `transaction_id, line, date, time, kind, name, merchant, amount, currency,
 amount_base, base_currency, category, category_path, tags, payment_method,
-channel, description, purpose, split_note, bank_description`
+channel, description, purpose, split_note, bank_description, receipts`
+
+(`receipts` = `;`-separated attachment ids, matching the file names in a zip backup.)
 
 Amounts are decimal strings (`12.50`); `tags` are `;`-separated; dates are ISO.
 
 ### SQLite — `tally-….sqlite`
 
-Tables `transactions`, `splits`, `transaction_tags`, `categories`, `merchants`,
-`tags`, `payment_methods`, `budgets`, plus:
+Tables `transactions`, `splits`, `transaction_tags`, `attachments`, `categories`,
+`merchants`, `tags`, `payment_methods`, `budgets`, plus:
 
 * `transaction_lines` — the CSV above as a table (easiest place to start);
 * `documents` — every document as raw JSON (`json` column), for anything else.
@@ -264,6 +291,8 @@ for t in (d for d in docs if d["type"] == "transaction" and d["kind"] == "expens
 |---|---|---|
 | Each device | IndexedDB database `tally` (stores `docs`, `outbox`, `meta`) | documents |
 | Sync server | `<data>/vaults/<vault>/log.jsonl` | one change per line (`{"seq","id","rev","data","at"}`); `data` is the document, or ciphertext for encrypted vaults |
+| Each device | IndexedDB stores `blobs` / `blobOutbox` | receipt bytes, and uploads not yet sent |
+| Sync server | `<data>/vaults/<vault>/blobs/<id>` | receipt files — the original bytes for unencrypted vaults, ciphertext otherwise |
 | Sync server | `<data>/exports/<vault>.json` | same as the JSON export (unencrypted vaults only), refreshed a few seconds after each change |
 | Sync server | `<backups>/<vault>/<vault>-YYYY-MM-DD.json.gz` | gzipped snapshot of the vault log |
 

@@ -6,6 +6,9 @@
  * changed, plus on demand. Retention keeps the newest N daily, N weekly
  * (Mondays) and N monthly (1st of month) snapshots.
  *
+ * Receipt files: copied once into <backupDir>/<vault>/blobs/ (they never
+ * change, so this is incremental and kept even if a receipt is later deleted).
+ *
  * Plain export: <dataDir>/exports/<vault>.json — for unencrypted vaults, the
  * current documents as a single readable JSON file in the same format as the
  * app's "Export JSON", handy for scripts running on the server.
@@ -52,6 +55,28 @@ export class Backups {
     return JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8'));
   }
 
+  /** Copy receipt files that aren't in the backup folder yet. Returns how many were copied. */
+  backupBlobs(vault) {
+    const v = this.store.get(vault);
+    if (!v) return 0;
+    const dest = path.join(this.dirFor(vault), 'blobs');
+    let n = 0;
+    for (const { id } of v.listBlobs()) {
+      const target = path.join(dest, id);
+      if (fs.existsSync(target)) continue;
+      fs.mkdirSync(dest, { recursive: true });
+      fs.copyFileSync(path.join(v.blobDir, id), target);
+      n++;
+    }
+    return n;
+  }
+
+  /** A receipt from the backup folder (used if the live copy was deleted). */
+  backedUpBlob(vault, id) {
+    const file = path.join(this.dirFor(vault), 'blobs', id);
+    return fs.existsSync(file) ? file : null;
+  }
+
   /** Write a snapshot now. `manual` snapshots never overwrite the daily one. */
   snapshot(vault, { manual = false } = {}) {
     const v = this.store.get(vault);
@@ -63,6 +88,7 @@ export class Backups {
     fs.writeFileSync(tmp, zlib.gzipSync(JSON.stringify(v.snapshot())));
     fs.renameSync(tmp, path.join(dir, name));
     v.backedUpSeq = v.seq;
+    this.backupBlobs(vault);
     this.prune(vault);
     return name;
   }
@@ -82,6 +108,8 @@ export class Backups {
         } else if (v.backedUpSeq === undefined) {
           v.backedUpSeq = v.seq;
         }
+        // Receipts can be added without a document change on this day.
+        this.backupBlobs(v.name);
       } catch (err) {
         this.log.error?.(`[backup] ${v.name}: ${err.message}`);
       }

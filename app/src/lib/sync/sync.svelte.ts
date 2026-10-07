@@ -9,7 +9,7 @@
  */
 import { repo as defaultRepo, type Repo } from '../db/repo.svelte';
 import type { Doc } from '../core/types';
-import { decryptJSON, deriveVaultKeys, encryptJSON } from './crypto';
+import { decryptBytes, decryptJSON, deriveVaultKeys, encryptBytes, encryptJSON } from './crypto';
 import { emit } from '../modules/events';
 
 export interface SyncConfig {
@@ -38,6 +38,8 @@ export interface ServerBackup {
 
 const PUSH_BATCH = 400;
 const TIMEOUT_MS = 20_000;
+/** Receipts can be slow to upload on a bad connection. */
+const BLOB_TIMEOUT_MS = 180_000;
 const PERIODIC_MS = 60_000;
 /** Warn when local changes have waited this long without reaching the server. */
 export const UNSYNCED_WARN_MS = 10 * 60_000;
@@ -86,6 +88,35 @@ async function request<T>(url: string, init: RequestInit & { token?: string } = 
   }
 }
 
+async function requestBytes(
+  url: string,
+  init: { method?: string; token: string; body?: Uint8Array },
+): Promise<Uint8Array | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), BLOB_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: init.method ?? 'GET',
+      headers: { Authorization: `Bearer ${init.token}`, ...(init.body ? { 'Content-Type': 'application/octet-stream' } : {}) },
+      body: init.body as BodyInit | undefined,
+      signal: ctrl.signal,
+      cache: 'no-store',
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new SyncError((data as { error?: string }).error ?? `Server responded ${res.status}`, res.status);
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  } catch (err) {
+    if (err instanceof SyncError) throw err;
+    if ((err as Error).name === 'AbortError') throw new SyncError('Uploading a receipt took too long; will retry.');
+    throw new SyncError('Could not reach the sync server.');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class SyncEngine {
   config = $state<SyncConfig | null>(null);
   busy = $state(false);
@@ -94,6 +125,8 @@ export class SyncEngine {
   lastError = $state<string | null>(null);
   /** When the oldest unsynced change happened (approx.). */
   pendingSince = $state<number | null>(null);
+  /** Receipt uploads/deletions waiting for the server. */
+  pendingBlobs = $state(0);
 
   private r: Repo;
   constructor(r: Repo = defaultRepo) {
@@ -110,7 +143,7 @@ export class SyncEngine {
     if (this.busy) return 'syncing';
     if (!this.online) return 'offline';
     if (this.lastError) return 'error';
-    if (this.r.pending > 0) return 'pending';
+    if (this.r.pending > 0 || this.pendingBlobs > 0) return 'pending';
     return 'synced';
   }
 
@@ -120,8 +153,14 @@ export class SyncEngine {
     return this.pendingSince !== null && Date.now() - this.pendingSince > UNSYNCED_WARN_MS;
   }
 
+  async refreshBlobPending(): Promise<void> {
+    this.pendingBlobs = (await this.r.db.blobOutbox()).length;
+    if (this.pendingBlobs) this.schedule(1500);
+  }
+
   async init(): Promise<void> {
     this.config = (await this.r.db.getMeta<SyncConfig>('sync')) ?? null;
+    await this.refreshBlobPending();
     this.lastSyncAt = (await this.r.db.getMeta<number>('lastSyncAt')) ?? null;
     if (this.r.pending > 0) this.pendingSince = (await this.r.db.getMeta<number>('pendingSince')) ?? Date.now();
     this.r.onLocalChange(() => {
@@ -195,6 +234,7 @@ export class SyncEngine {
     await this.r.db.setMeta('sync', config);
     await this.r.db.setMeta('syncCursor', 0);
     await this.r.db.queueAll();
+    await this.r.db.queueAllBlobs();
     await this.r.refreshPending();
     this.config = config;
     this.lastError = null;
@@ -258,6 +298,7 @@ export class SyncEngine {
         if (!res.more && outbox.length === 0) break;
       }
       await this.r.refreshPending();
+      pushedTotal += await this.syncBlobs();
       this.lastSyncAt = Date.now();
       this.lastError = null;
       this.failures = 0;
@@ -282,6 +323,55 @@ export class SyncEngine {
         this.schedule(100);
       }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Receipts (blobs)
+
+  private blobUrl(id = ''): string {
+    return this.url(`/vaults/${encodeURIComponent(this.config!.vault)}/blobs${id ? '/' + encodeURIComponent(id) : ''}`);
+  }
+
+  /** Upload/delete queued receipt files. Returns how many were sent. */
+  private async syncBlobs(): Promise<number> {
+    const c = this.config!;
+    let sent = 0;
+    for (const entry of await this.r.db.blobOutbox()) {
+      if (entry.op === 'put') {
+        const blob = await this.r.db.getBlob(entry.id);
+        if (blob) {
+          const body = c.encrypted && c.key ? encryptBytes(c.key, entry.id, blob.data) : blob.data;
+          await requestBytes(this.blobUrl(entry.id), { method: 'PUT', token: c.token, body });
+          sent++;
+        }
+      } else {
+        await requestBytes(this.blobUrl(entry.id), { method: 'DELETE', token: c.token });
+        sent++;
+      }
+      await this.r.db.ackBlob(entry);
+      this.pendingBlobs = Math.max(0, this.pendingBlobs - 1);
+    }
+    await this.refreshBlobPending();
+    return sent;
+  }
+
+  /** Fetch a receipt's bytes from the server (null if it isn't there). */
+  async downloadBlob(id: string): Promise<Uint8Array | null> {
+    const c = this.config;
+    if (!c) return null;
+    const data = await requestBytes(this.blobUrl(id), { token: c.token });
+    if (!data) return null;
+    try {
+      return c.encrypted && c.key ? decryptBytes(c.key, id, data) : data;
+    } catch {
+      throw new SyncError('Could not decrypt a receipt from the server.');
+    }
+  }
+
+  async listServerBlobs(): Promise<string[]> {
+    if (!this.config) return [];
+    const r = await request<{ blobs: { id: string }[] }>(this.blobUrl(), { token: this.config.token });
+    return r.blobs.map((b) => b.id);
   }
 
   // -------------------------------------------------------------------------

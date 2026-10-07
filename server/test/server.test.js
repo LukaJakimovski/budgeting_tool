@@ -27,8 +27,8 @@ async function setup(env = {}) {
     });
     return { status: res.status, body: await res.json() };
   };
-  const close = () => new Promise((r) => { server.close(r); store.closeAll(); });
-  return { dir, config, store, backups, call, close };
+  const close = () => new Promise((r) => { server.close(r); server.closeAllConnections?.(); store.closeAll(); });
+  return { dir, config, store, backups, call, close, port: server.address().port };
 }
 
 test('health reports signup mode', async () => {
@@ -179,4 +179,43 @@ test('static files: serves the app, SPA fallback, no path traversal', async () =
     await new Promise((r) => server.close(r));
     store.closeAll();
   }
+});
+
+test('receipt blobs: upload, list, download, delete, backup and fallback', async () => {
+  const s = await setup();
+  await s.call('POST', '/vaults', { vault: 'r', token: TOKEN });
+  const url = (p) => `http://127.0.0.1:${s.port}/api/v1/vaults/r/blobs${p}`;
+  const auth = { Authorization: `Bearer ${TOKEN}` };
+  const bytes = new Uint8Array(200_000).map((_, i) => i % 251);
+
+  let r = await fetch(url('/att_1'), { method: 'PUT', headers: auth, body: bytes });
+  assert.equal(r.status, 201);
+  r = await fetch(url('/att_1'), { headers: auth });
+  assert.equal(r.status, 200);
+  assert.deepEqual(new Uint8Array(await r.arrayBuffer()), bytes);
+  assert.equal((await fetch(url('/att_1'), { headers: { Authorization: 'Bearer nope'.padEnd(64, 'x') } })).status, 401);
+  assert.equal((await fetch(url('/..%2fvault.json'), { method: 'PUT', headers: auth, body: 'x' })).status, 400);
+  assert.deepEqual((await (await fetch(url(''), { headers: auth })).json()).blobs, [{ id: 'att_1', size: 200_000 }]);
+
+  // Backed up with the next snapshot, still downloadable after deletion.
+  await s.call('POST', '/vaults/r/backups');
+  assert.ok(fs.existsSync(path.join(s.backups.dirFor('r'), 'blobs', 'att_1')));
+  assert.equal((await fetch(url('/att_1'), { method: 'DELETE', headers: auth })).status, 200);
+  assert.deepEqual((await (await fetch(url(''), { headers: auth })).json()).blobs, []);
+  r = await fetch(url('/att_1'), { headers: auth });
+  assert.equal(r.status, 200, 'served from the backup copy');
+  assert.equal((await fetch(url('/att_missing'), { headers: auth })).status, 404);
+  await s.close();
+});
+
+test('receipt blobs: size limit', async () => {
+  const s = await setup({ TALLY_MAX_FILE_MB: '1' });
+  await s.call('POST', '/vaults', { vault: 'r', token: TOKEN });
+  const r = await fetch(`http://127.0.0.1:${s.port}/api/v1/vaults/r/blobs/big`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${TOKEN}` },
+    body: new Uint8Array(2 * 1024 * 1024),
+  }).catch((e) => ({ status: 'reset', e }));
+  assert.ok(r.status === 413 || r.status === 'reset');
+  await s.close();
 });

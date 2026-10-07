@@ -18,6 +18,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export const VAULT_NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+export const BLOB_ID = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_ID = 200;
 const MAX_REV = 120;
 const MAX_ENTRY_BYTES = 512 * 1024;
@@ -134,6 +135,52 @@ export class Vault {
     this.lines = sorted.length;
   }
 
+  // ---------------------------------------------------------------------------
+  // Blobs: receipt files, stored as-is (ciphertext for encrypted vaults) in
+  // <vault>/blobs/<id>. Ids are random and never reused, so blobs are immutable.
+
+  get blobDir() {
+    return path.join(this.dir, 'blobs');
+  }
+
+  blobPath(id) {
+    if (!BLOB_ID.test(id)) throw Object.assign(new Error('invalid blob id'), { status: 400 });
+    return path.join(this.blobDir, id);
+  }
+
+  putBlob(id, data) {
+    const file = this.blobPath(id);
+    fs.mkdirSync(this.blobDir, { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    const fd = fs.openSync(tmp, 'w');
+    fs.writeSync(fd, data);
+    fs.fdatasyncSync(fd);
+    fs.closeSync(fd);
+    fs.renameSync(tmp, file);
+    this.changedAt = Date.now();
+  }
+
+  /** Path to the blob, or null. */
+  blobFile(id) {
+    const file = this.blobPath(id);
+    return fs.existsSync(file) ? file : null;
+  }
+
+  deleteBlob(id) {
+    const file = this.blobPath(id);
+    if (!fs.existsSync(file)) return false;
+    fs.rmSync(file);
+    return true;
+  }
+
+  listBlobs() {
+    if (!fs.existsSync(this.blobDir)) return [];
+    return fs
+      .readdirSync(this.blobDir)
+      .filter((f) => BLOB_ID.test(f))
+      .map((id) => ({ id, size: fs.statSync(path.join(this.blobDir, id)).size }));
+  }
+
   /** All current entries (for backups / exports). */
   snapshot() {
     return {
@@ -148,12 +195,15 @@ export class Vault {
   }
 
   info() {
+    const blobs = this.listBlobs();
     return {
       vault: this.meta.name,
       encrypted: this.meta.encrypted,
       createdAt: this.meta.createdAt,
       seq: this.seq,
       docs: this.entries.size,
+      blobs: blobs.length,
+      blobBytes: blobs.reduce((n, b) => n + b.size, 0),
     };
   }
 

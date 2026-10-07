@@ -43,7 +43,7 @@
 <div class="stack">
   <div class="chips" role="group" aria-label="Filter sections">
     {#each SECTIONS as [id, label] (id)}
-      {@const n = id === 'categories' ? arr('categoryIds').length : id === 'tags' ? arr('tagIds').length : id === 'merchants' ? arr('merchantIds').length : id === 'payment' ? arr('paymentMethodIds').length : (value.kinds?.length ?? 0) + (value.channels?.length ?? 0) + (value.minAmount != null ? 1 : 0) + (value.maxAmount != null ? 1 : 0)}
+      {@const n = id === 'categories' ? arr('categoryIds').length : id === 'tags' ? arr('tagIds').length : id === 'merchants' ? arr('merchantIds').length : id === 'payment' ? arr('paymentMethodIds').length : (value.kinds?.length ?? 0) + (value.channels?.length ?? 0) + (value.minAmount != null ? 1 : 0) + (value.maxAmount != null ? 1 : 0) + (value.hasAttachment != null ? 1 : 0)}
       <button type="button" class="chip" aria-pressed={section === id} onclick={() => (section = id)}>
         {label}{#if n}<span class="badge">{n}</span>{/if}
       </button>
@@ -74,6 +74,13 @@
       <div class="chips">
         <button type="button" class="chip" aria-pressed={value.channels?.includes('in_person') ?? false} onclick={() => toggleChannel('in_person')}>In person</button>
         <button type="button" class="chip" aria-pressed={value.channels?.includes('online') ?? false} onclick={() => toggleChannel('online')}>Online</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="label">Receipt</span>
+      <div class="chips">
+        <button type="button" class="chip" aria-pressed={value.hasAttachment === true} onclick={() => set('hasAttachment', value.hasAttachment === true ? null : true)}>With receipt</button>
+        <button type="button" class="chip" aria-pressed={value.hasAttachment === false} onclick={() => set('hasAttachment', value.hasAttachment === false ? null : false)}>Without receipt</button>
       </div>
     </div>
     {#if showAmount}

@@ -32,3 +32,36 @@ test('two devices stay in sync through the server (encrypted vault)', async ({ b
   await phone.goto('/#/history');
   await expect(phone.getByText('TTC')).toBeVisible();
 });
+
+test('a receipt added on the phone opens on the laptop', async ({ browser }) => {
+  const phone = await (await browser.newContext()).newPage();
+  const laptop = await (await browser.newContext()).newPage();
+  for (const [p, create] of [[phone, true], [laptop, false]] as const) {
+    await start(p);
+    await p.goto('/#/settings/sync');
+    if (create) await p.getByRole('button', { name: 'Create new vault' }).click();
+    await p.getByLabel('Vault name').fill('receipts');
+    await p.getByLabel('Passphrase', { exact: true }).fill('receipt passphrase');
+    if (create) await p.getByLabel('Repeat passphrase').fill('receipt passphrase');
+    await p.getByRole('button', { name: create ? 'Create vault & sync' : 'Connect & sync' }).click();
+    await expect(p.getByText('Connected to “receipts”')).toBeVisible();
+  }
+  const png = await phone.screenshot();
+  await phone.getByRole('button', { name: /^New(?! budget)/ }).first().click();
+  await phone.getByLabel('Amount').fill('9.99');
+  await phone.getByLabel('Merchant').fill('Pharmacy');
+  await phone.getByText('Category', { exact: true }).click();
+  await phone.getByRole('group', { name: 'Category' }).getByRole('button', { name: 'All' }).click();
+  await phone.getByRole('option', { name: /Health/ }).click();
+  await phone.locator('input[type=file][capture]').setInputFiles({ name: 'rx.png', mimeType: 'image/png', buffer: png });
+  await expect(phone.getByRole('button', { name: 'Open rx.jpg' })).toBeVisible();
+  await phone.getByRole('button', { name: 'Add purchase' }).click();
+  await expect(phone.getByRole('link', { name: /Synced/ })).toBeVisible({ timeout: 15_000 });
+
+  await laptop.goto('/#/settings/sync');
+  await laptop.getByRole('button', { name: 'Sync now' }).click();
+  await laptop.goto('/#/history');
+  await laptop.getByText('Pharmacy').click();
+  await laptop.getByRole('button', { name: 'Open rx.jpg' }).click();
+  await expect(laptop.getByRole('dialog', { name: 'rx.jpg' }).locator('img')).toBeVisible();
+});

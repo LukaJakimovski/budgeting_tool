@@ -36,6 +36,8 @@ export function loadConfig(env = process.env, overrides = {}) {
     /** Keep data/exports/<vault>.json up to date for unencrypted vaults. */
     plainExport: bool(env.TALLY_PLAIN_EXPORT, true),
     maxBodyBytes: int(env.TALLY_MAX_BODY_MB, 25) * 1024 * 1024,
+    /** Largest receipt file accepted. */
+    maxBlobBytes: int(env.TALLY_MAX_FILE_MB, 20) * 1024 * 1024,
     ...overrides,
   };
 }

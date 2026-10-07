@@ -28,6 +28,20 @@ towards, plus **Undo**.
 * **Split across categories** — one receipt, several categories (groceries +
   a chocolate bar). Splits must add up to the total.
 
+### Receipts
+
+Tap the **camera** next to *Add purchase* to photograph a receipt (or, under
+*Details → Receipt*, choose **Photo** or **File / PDF** — e-receipts work too).
+Add as many as you like; tap one to view it full size, save/share it, or
+remove it. Photos are shrunk (still easily readable) so they sync fast on a
+slow connection; until a receipt reaches your server, the cloud icon shows it
+as a pending change. Other devices download a receipt the first time you open
+it. Transactions with receipts show a 📎 and you can filter by *With receipt*.
+
+*Settings → Backup, import & export → Receipts* shows how much space they use,
+can download all of them to the device for offline use, and cleans up files of
+deleted transactions. Backups include receipts (as a .zip).
+
 **Type:** *Expense* (default), *Refund* (money back — reduces spending in its
 category) or *Income*.
 

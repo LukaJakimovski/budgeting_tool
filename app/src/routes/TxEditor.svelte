@@ -8,6 +8,10 @@
   import { ui } from '$lib/ui/ui.svelte';
   import { toasts } from '$lib/ui/toast.svelte';
   import Sheet from '$lib/ui/Sheet.svelte';
+  import ReceiptThumb from '$lib/ui/ReceiptThumb.svelte';
+  import ReceiptViewer from '$lib/ui/ReceiptViewer.svelte';
+  import { onDestroy } from 'svelte';
+  import { ACCEPT, addAttachment, discardAttachments, removeAttachments } from '$lib/attachments';
   import Icon from '$lib/ui/Icon.svelte';
   import CategoryPicker from '$lib/ui/CategoryPicker.svelte';
   import TagInput from '$lib/ui/TagInput.svelte';
@@ -21,7 +25,7 @@
     type TxInput,
   } from '$lib/actions';
   import { money, merchantName, dayHeading } from '$lib/ui/format';
-  import type { Channel, ID, Merchant, Split, Transaction, TxKind } from '$lib/core/types';
+  import type { Attachment, Channel, ID, Merchant, Split, Transaction, TxKind } from '$lib/core/types';
   import type { EntryRequest } from '$lib/ui/ui.svelte';
   import type { BudgetState } from '$lib/core/budgets';
 
@@ -63,7 +67,20 @@
   let splits = $state<SplitDraft[]>(
     src?.splits.map((s) => ({ amountText: toDecimalString(s.amount, src.currency), categoryId: s.categoryId, tagIds: [...s.tagIds], note: s.note })) ?? [],
   );
-  let showDetails = $state(Boolean(existing && (existing.description || existing.purpose || existing.tagIds.length || existing.splits.length || existing.name)));
+  // Receipts. Duplicates don't copy them (each file belongs to one transaction).
+  let attachments = $state<Attachment[]>(existing?.attachments ? [...existing.attachments] : []);
+  /** Added in this session — forgotten again if the sheet closes without saving. */
+  const addedNow: ID[] = [];
+  let committed = false;
+  let viewing = $state<Attachment | null>(null);
+  let attaching = $state(false);
+  let cameraEl: HTMLInputElement | undefined = $state();
+  let fileEl: HTMLInputElement | undefined = $state();
+  onDestroy(() => {
+    if (!committed && addedNow.length) void discardAttachments(addedNow);
+  });
+
+  let showDetails = $state(Boolean(existing && (existing.description || existing.purpose || existing.tagIds.length || existing.splits.length || existing.name || existing.attachments?.length)));
   let merchantFocus = $state(false);
   let highlighted = $state(0);
   let saving = $state(false);
@@ -192,6 +209,31 @@
     ui.closeEntry();
   }
 
+  async function attach(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (!files.length) return;
+    attaching = true;
+    try {
+      for (const f of files) {
+        const att = await addAttachment(f);
+        addedNow.push(att.id);
+        attachments = [...attachments, att];
+      }
+      showDetails = true;
+    } catch (err) {
+      toasts.error((err as Error).message);
+    } finally {
+      attaching = false;
+    }
+  }
+
+  function detach(id: ID) {
+    attachments = attachments.filter((a) => a.id !== id);
+    if (viewing?.id === id) viewing = null;
+  }
+
   function budgetLine(s: BudgetState) {
     const per = periodLabel(s.range, s.budget.period.unit, repo.setting('dateFormat'));
     const tone: 'good' | 'warn' | 'bad' = s.status === 'over' ? 'bad' : s.status === 'warn' ? 'warn' : 'good';
@@ -226,8 +268,14 @@
         recurringId: existing?.recurringId ?? null,
         importRef: existing?.importRef ?? null,
         bankDescription: existing?.bankDescription ?? null,
+        attachments,
       };
       const res = await saveTransaction(input, existing?.id);
+      committed = true;
+      // Files removed from an existing transaction are deleted here and on the server.
+      const keep = new Set(attachments.map((a) => a.id));
+      const removed = [...(existing?.attachments ?? []).map((a) => a.id), ...addedNow].filter((id) => !keep.has(id));
+      if (removed.length) void removeAttachments(removed);
       close();
       const where = mid ? ` at ${merchantName(mid)}` : '';
       const states = [...res.budgets].sort((a, b) => b.ratio - a.ratio).slice(0, 3);
@@ -277,6 +325,7 @@
       channel === 'online' ? 'Online' : channel === 'in_person' ? 'In person' : null,
       tagIds.length ? `${tagIds.length} tag${tagIds.length > 1 ? 's' : ''}` : null,
       splits.length ? `${splits.length} splits` : null,
+      attachments.length ? `📎 ${attachments.length}` : null,
     ]
       .filter(Boolean)
       .join(' · '),
@@ -390,6 +439,23 @@
 
     {#if showDetails}
       <div class="details stack">
+        <!-- Receipts -->
+        <div class="field">
+          <span class="label">Receipt</span>
+          <div class="receipts">
+            {#each attachments as att (att.id)}
+              <ReceiptThumb {att} onopen={() => (viewing = att)} onremove={() => detach(att.id)} />
+            {/each}
+            <button type="button" class="add-receipt" onclick={() => cameraEl?.click()} disabled={attaching}>
+              <Icon name="camera" size={20} /><span class="tiny">{attaching ? 'Saving…' : 'Photo'}</span>
+            </button>
+            <button type="button" class="add-receipt" onclick={() => fileEl?.click()} disabled={attaching}>
+              <Icon name="paperclip" size={20} /><span class="tiny">File / PDF</span>
+            </button>
+          </div>
+          <span class="hint">Photos are shrunk to keep sync fast (still sharp enough to read).</span>
+        </div>
+
         <div class="field">
           <label for="item">What did you buy?</label>
           <input id="item" class="input" bind:value={name} oninput={() => touched.add('name')} placeholder="e.g. Coffee and a muffin" />
@@ -479,6 +545,10 @@
       <button type="button" class="icon-btn" onclick={remove} aria-label="Delete" title="Delete"><Icon name="trash" /></button>
       <button type="button" class="icon-btn" onclick={duplicate} aria-label="Duplicate" title="Duplicate"><Icon name="copy" /></button>
     {/if}
+    <button type="button" class="icon-btn cam" onclick={() => cameraEl?.click()} aria-label="Add receipt photo" title="Add receipt photo" disabled={attaching}>
+      <Icon name="camera" />
+      {#if attachments.length}<span class="badge-dot">{attachments.length}</span>{/if}
+    </button>
     <span class="spacer"></span>
     <button bind:this={saveEl} type="button" class="btn primary save" disabled={saving} onclick={save}>
       <Icon name="check" size={18} />
@@ -487,7 +557,57 @@
   {/snippet}
 </Sheet>
 
+<!-- Hidden pickers: "capture" opens the camera directly on phones. -->
+<input bind:this={cameraEl} type="file" accept="image/*" capture="environment" class="sr-only" onchange={attach} tabindex="-1" aria-hidden="true" />
+<input bind:this={fileEl} type="file" accept={ACCEPT} multiple class="sr-only" onchange={attach} tabindex="-1" aria-hidden="true" />
+
+{#if viewing}
+  <ReceiptViewer att={viewing} onclose={() => (viewing = null)} onremove={() => detach(viewing!.id)} />
+{/if}
+
 <style>
+  .receipts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s2);
+    padding-top: 6px;
+  }
+  .add-receipt {
+    width: 72px;
+    height: 72px;
+    border-radius: var(--radius);
+    border: max(1px, var(--border-w)) dashed var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+  }
+  .add-receipt:hover {
+    background: var(--surface2);
+    color: var(--text);
+  }
+  .cam {
+    position: relative;
+  }
+  .badge-dot {
+    position: absolute;
+    top: 3px;
+    right: 1px;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    padding: 0 4px;
+  }
   .amount-row {
     display: flex;
     align-items: stretch;

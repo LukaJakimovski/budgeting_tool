@@ -3,13 +3,19 @@
   import { sync } from '$lib/sync/sync.svelte';
   import { toasts } from '$lib/ui/toast.svelte';
   import { router } from '$lib/ui/router.svelte';
-  import { backupStatus, downloadBackup, parseBackup, restore, type ParsedBackup } from '$lib/backup';
+  import { backupStatus, downloadBackup, parseBackupFile, restore, type ParsedBackup } from '$lib/backup';
+  import { cleanupUnusedAttachments, downloadAllAttachments, formatBytes } from '$lib/attachments';
   import { exportCSV, exportJSON, exportSQLite, stamp } from '$lib/exporters';
   import { saveFile } from '$lib/platform';
   import { relativeTime } from '$lib/ui/format';
   import Icon from '$lib/ui/Icon.svelte';
 
   let parsed = $state<ParsedBackup | null>(null);
+  let receiptStats = $state(repo.db.blobStats());
+  const receiptCount = $derived(repo.list('transaction').reduce((n, t) => n + (t.attachments?.length ?? 0), 0));
+  function refreshStats() {
+    receiptStats = repo.db.blobStats();
+  }
   let busy = $state('');
   const status = $derived(backupStatus());
 
@@ -29,7 +35,7 @@
     (e.target as HTMLInputElement).value = '';
     if (!f) return;
     try {
-      parsed = parseBackup(await f.text());
+      parsed = await parseBackupFile(f);
     } catch (err) {
       toasts.error((err as Error).message);
     }
@@ -65,12 +71,20 @@
       {/if}
     </p>
     <div class="row wrap">
-      <button class="btn primary" disabled={!!busy} onclick={() => run('Backup', async () => (await downloadBackup()) && toasts.show('Backup saved', { tone: 'success' }))}>
+      <button
+        class="btn primary"
+        disabled={!!busy}
+        onclick={() =>
+          run('Backup', async () => {
+            const r = await downloadBackup();
+            if (r.saved) toasts.show(r.missing ? `Backup saved — ${r.missing} receipt${r.missing > 1 ? 's' : ''} couldn't be included (not on this device or the server)` : 'Backup saved', { tone: 'success', timeout: r.missing ? 8000 : 3500 });
+          })}
+      >
         <Icon name="download" size={16} /> Download backup
       </button>
       <label class="btn">
         <Icon name="upload" size={16} /> Restore from file…
-        <input type="file" accept=".json,application/json" class="sr-only" onchange={pick} />
+        <input type="file" accept=".json,.zip,application/json,application/zip" class="sr-only" onchange={pick} />
       </label>
     </div>
     {#if parsed}
@@ -106,6 +120,27 @@
         <Icon name="download" size={16} /> SQLite <span class="faint small">{busy === 'Export' ? 'preparing…' : 'tables, ready for SQL'}</span>
       </button>
     </div>
+  </section>
+
+  <section class="card stack">
+    <h2>Receipts</h2>
+    {#await receiptStats then st}
+      <p class="muted small">
+        {receiptCount} receipt{receiptCount === 1 ? '' : 's'} attached · {st.count} file{st.count === 1 ? '' : 's'} ({formatBytes(st.bytes)}) stored on this device.
+        {#if sync.config}Other receipts download from your server the first time you open them.{/if}
+      </p>
+    {/await}
+    <div class="row wrap">
+      {#if sync.config}
+        <button class="btn" disabled={!!busy} onclick={() => run('Download', async () => { const n = await downloadAllAttachments(); toasts.show(`Downloaded ${n} receipt${n === 1 ? '' : 's'}`); refreshStats(); })}>
+          <Icon name="download" size={16} /> Keep all receipts on this device
+        </button>
+      {/if}
+      <button class="btn" disabled={!!busy} onclick={() => run('Clean up', async () => { const r = await cleanupUnusedAttachments(); toasts.show(`Removed ${r.local + r.server} unused file${r.local + r.server === 1 ? '' : 's'}`); refreshStats(); })}>
+        <Icon name="trash" size={16} /> Clean up unused receipts
+      </button>
+    </div>
+    <p class="faint small">Receipts of deleted transactions are kept (so Undo works) until you clean up. Server backups keep a copy of every receipt.</p>
   </section>
 
   <section class="card stack">

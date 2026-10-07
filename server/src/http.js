@@ -36,7 +36,7 @@ const SECURITY_HEADERS = {
 
 const CSP =
   "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
-  "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: http:; worker-src 'self'; " +
+  "img-src 'self' data: blob:; object-src 'self' blob:; font-src 'self' data:; connect-src 'self' https: http:; worker-src 'self'; " +
   "manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 class HttpError extends Error {
@@ -95,6 +95,24 @@ function readBody(req, limit) {
   });
 }
 
+function readRaw(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new HttpError(413, `File too large (max ${Math.round(limit / 1024 / 1024)} MB)`));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', () => reject(new HttpError(400, 'Bad request body')));
+  });
+}
+
 function sendJSON(req, res, status, body, extra = {}) {
   let data = Buffer.from(JSON.stringify(body));
   const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extra };
@@ -119,7 +137,7 @@ export function createServer({ config, store, backups, log = console }) {
     if (!allowed) return;
     res.setHeader('Access-Control-Allow-Origin', config.corsOrigins.includes('*') ? '*' : origin);
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Content-Encoding');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Max-Age', '86400');
     if (!config.corsOrigins.includes('*')) res.setHeader('Vary', 'Origin');
   }
@@ -195,6 +213,35 @@ export function createServer({ config, store, backups, log = console }) {
       const result = vault.sync({ since, push, limit: body.limit ?? 1000 });
       if (result.accepted) backups.scheduleExport(name);
       return sendJSON(req, res, 200, result);
+    }
+
+    if (parts[2] === 'blobs') {
+      if (parts.length === 3 && method === 'GET') return sendJSON(req, res, 200, { blobs: vault.listBlobs() });
+      const id = parts[3];
+      if (parts.length !== 4 || !id) throw new HttpError(404, 'Not found');
+      if (method === 'PUT') {
+        vault.blobPath(id); // validate before reading the body
+        const data = await readRaw(req, config.maxBlobBytes);
+        vault.putBlob(id, data);
+        return sendJSON(req, res, 201, { id, size: data.length });
+      }
+      if (method === 'GET' || method === 'HEAD') {
+        const file = vault.blobFile(id) ?? backups.backedUpBlob(name, id);
+        if (!file) throw new HttpError(404, 'No such file');
+        const st = fs.statSync(file);
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': st.size,
+          'Cache-Control': 'private, max-age=31536000, immutable',
+        });
+        if (method === 'HEAD') return res.end();
+        return fs.createReadStream(file).pipe(res);
+      }
+      if (method === 'DELETE') {
+        vault.deleteBlob(id);
+        return sendJSON(req, res, 200, { ok: true });
+      }
+      throw new HttpError(405, 'Method not allowed');
     }
 
     if (parts[2] === 'backups') {

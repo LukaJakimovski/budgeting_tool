@@ -27,6 +27,7 @@
     for (const k of value.kinds ?? []) out.push({ label: k[0].toUpperCase() + k.slice(1), remove: drop('kinds', k) });
     if (value.minAmount != null) out.push({ label: `≥ ${money(value.minAmount)}`, remove: () => (value = { ...value, minAmount: null }) });
     if (value.maxAmount != null) out.push({ label: `≤ ${money(value.maxAmount)}`, remove: () => (value = { ...value, maxAmount: null }) });
+    if (value.hasAttachment != null) out.push({ label: value.hasAttachment ? 'With receipt' : 'Without receipt', remove: () => (value = { ...value, hasAttachment: null }) });
     return out;
   });
 </script>

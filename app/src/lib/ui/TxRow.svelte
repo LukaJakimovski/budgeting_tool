@@ -5,6 +5,7 @@
   import { formatMoney } from '../core/money';
   import { txTime } from '../core/dates';
   import type { Tag, Transaction } from '../core/types';
+  import Icon from './Icon.svelte';
 
   let { tx, showDate = '' }: { tx: Transaction; showDate?: string } = $props();
 
@@ -26,7 +27,7 @@
 <button type="button" class="list-item tx" onclick={() => ui.openEntry({ id: tx.id })}>
   <span class="ico" aria-hidden="true">{tx.splits.length ? '✂️' : categoryIcon(tx.categoryId)}</span>
   <span class="main">
-    <span class="title">{txTitle(tx)}</span>
+    <span class="title">{txTitle(tx)}{#if tx.attachments?.length}<span class="clip" title="Has a receipt"><Icon name="paperclip" size={13} label="has receipt" /></span>{/if}</span>
     <span class="sub faint small">{showDate ? showDate + ' · ' : ''}{txTime(tx.occurredAt)} · {sub}</span>
   </span>
   <span class="amt num" class:inc={tx.kind !== 'expense'}>
@@ -60,6 +61,11 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .clip {
+    margin-left: 6px;
+    color: var(--text-faint);
+    vertical-align: -1px;
   }
   .sub {
     white-space: nowrap;

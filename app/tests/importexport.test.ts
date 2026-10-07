@@ -91,3 +91,37 @@ describe('exports', () => {
     expect(() => parseBackup(JSON.stringify({ format: 'tally-export', version: 99, documents: [] }))).toThrow(/newer version/);
   });
 });
+
+describe('backups with receipts', () => {
+  it('round-trips receipts through a zip backup', async () => {
+    const { buildBackup, parseBackupFile, restore } = await import('../src/lib/backup');
+    const bytes = new Uint8Array(30_000).map((_, i) => (i * 13) % 256);
+    await repo.db.putBlob({ id: 'att_zip1', mime: 'image/jpeg', data: bytes }, true);
+    await saveTransaction({
+      kind: 'expense', occurredAt: makeOccurredAt('2026-10-06', '12:00'), amount: 1234, currency: 'CAD', merchantId: null, name: 'With receipt',
+      categoryId: 'cat_groceries', paymentMethodId: null, channel: null, tagIds: [], description: '', purpose: '', splits: [],
+      attachments: [{ id: 'att_zip1', name: 'r.jpg', mime: 'image/jpeg', size: bytes.length, addedAt: new Date().toISOString() }],
+    });
+    const b = await buildBackup();
+    expect(b.name).toMatch(/\.zip$/);
+    expect(b.missing).toBe(0);
+    const parsed = await parseBackupFile(new Blob([b.data as BlobPart]));
+    expect(parsed.files?.get('att_zip1')).toEqual(bytes);
+    expect(parsed.counts.receipt).toBe(1);
+
+    await repo.db.deleteBlob('att_zip1', false);
+    expect(await repo.db.getBlob('att_zip1')).toBeUndefined();
+    await restore(parsed, 'merge');
+    expect((await repo.db.getBlob('att_zip1'))?.data).toEqual(bytes);
+    // receipts show up in the CSV export too
+    expect(exportCSV()).toContain('att_zip1');
+  });
+
+  it('filters by having a receipt', async () => {
+    const { compileFilter, allocateAll } = await import('../src/lib/core/ledger');
+    const allocs = allocateAll(repo.transactions(), repo.moneyContext());
+    const withR = allocs.filter(compileFilter({ hasAttachment: true }, repo.lookup()));
+    expect(withR.map((a) => a.tx.name)).toEqual(['With receipt']);
+    expect(allocs.filter(compileFilter({ hasAttachment: false }, repo.lookup())).length).toBe(allocs.length - 1);
+  });
+});

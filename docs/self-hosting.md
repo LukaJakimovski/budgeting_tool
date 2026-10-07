@@ -99,6 +99,9 @@ changed**, and keeps 14 daily, 8 weekly and 24 monthly snapshots:
   or *Settings → Sync → Snapshot now* in the app.
 * **Restore:** *Settings → Sync → Server backups → Restore* (the current state is
   snapshotted first, so a restore can itself be undone).
+* **Receipts** are copied once into `/var/lib/tally/backups/<vault>/blobs/`
+  (they never change, so this is incremental). Copies are kept even after a
+  receipt is deleted, and the server falls back to them if a restore needs one.
 * Encrypted vaults' snapshots are ciphertext — safe to store anywhere, but only
   readable through the app with your passphrase.
 
@@ -114,6 +117,10 @@ change). It's the same format as the app's JSON export:
 ```bash
 python3 tools/tally_export.py /var/lib/tally/exports/luka.json --by merchant
 ```
+
+Receipt files of unencrypted vaults are plain files in
+`/var/lib/tally/vaults/<vault>/blobs/<attachment id>` (the transaction's
+`attachments[].mime` tells you the type).
 
 ## Configuration
 
@@ -132,7 +139,8 @@ Environment variables (in `/opt/tally/tally-server.env`, or the compose file):
 | `TALLY_BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` | `14` / `8` / `24` | Retention |
 | `TALLY_PLAIN_EXPORT` | `true` | Keep `exports/<vault>.json` for unencrypted vaults |
 | `TALLY_CORS_ORIGINS` | `*` | Allowed origins for the API (comma-separated). Tokens, not cookies, are used, so `*` is safe |
-| `TALLY_MAX_BODY_MB` | `25` | Request size limit |
+| `TALLY_MAX_BODY_MB` | `25` | Request size limit for sync |
+| `TALLY_MAX_FILE_MB` | `20` | Largest receipt file accepted |
 
 ## Sharing with friends
 

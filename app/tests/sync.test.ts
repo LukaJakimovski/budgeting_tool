@@ -125,3 +125,34 @@ it('keeps working offline and reports pending changes', async () => {
   await A.s.syncNow();
   expect(A.r.pending).toBe(0);
 });
+
+for (const encrypted of [false, true]) {
+  it(`syncs receipt files between devices (${encrypted ? 'encrypted' : 'plain'})`, async () => {
+    const vault = `blobs${encrypted ? 'e' : 'p'}`;
+    const A = await device();
+    const B = await device();
+    await A.s.connect({ serverUrl: url, vault, passphrase: 'pw for blobs', create: true, encrypted });
+    await B.s.connect({ serverUrl: url, vault, passphrase: 'pw for blobs', create: false, encrypted: false });
+
+    const bytes = new Uint8Array(50_000).map((_, i) => (i * 7) % 256);
+    await A.r.db.putBlob({ id: 'att_test1', mime: 'image/jpeg', data: bytes }, true);
+    await A.s.refreshBlobPending();
+    expect(A.s.pendingBlobs).toBe(1);
+    expect(A.s.state).toBe('pending');
+    await A.s.syncNow();
+    expect(A.s.pendingBlobs).toBe(0);
+
+    const onServer = store.get(vault).blobFile('att_test1');
+    const raw = new Uint8Array(fs.readFileSync(onServer));
+    if (encrypted) expect(raw).not.toEqual(bytes);
+    else expect(raw).toEqual(bytes);
+
+    expect(await B.s.downloadBlob('att_test1')).toEqual(bytes);
+    expect(await B.s.listServerBlobs()).toEqual(['att_test1']);
+    expect(await B.s.downloadBlob('att_nope')).toBeNull();
+
+    await A.r.db.deleteBlob('att_test1', true);
+    await A.s.syncNow();
+    expect(store.get(vault).blobFile('att_test1')).toBeNull();
+  });
+}

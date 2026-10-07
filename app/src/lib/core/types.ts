@@ -50,6 +50,26 @@ export interface Split {
   note: string;
 }
 
+/**
+ * A file attached to a transaction (receipt photo, PDF invoice…). The bytes
+ * are stored separately as a "blob" under the same id (see attachments.ts and
+ * docs/sync-protocol.md); only this metadata lives in the document.
+ */
+export interface Attachment {
+  /** Blob id, e.g. "att_01k…". */
+  id: ID;
+  /** Original file name. */
+  name: string;
+  /** MIME type of the stored bytes ("image/jpeg", "application/pdf"…). */
+  mime: string;
+  /** Stored size in bytes (after compression). */
+  size: number;
+  width?: number;
+  height?: number;
+  /** ISO 8601 UTC. */
+  addedAt: string;
+}
+
 export interface Transaction extends BaseDoc {
   type: 'transaction';
   kind: TxKind;
@@ -78,6 +98,8 @@ export interface Transaction extends BaseDoc {
   importRef?: string | null;
   /** Raw statement text from a bank import. */
   bankDescription?: string | null;
+  /** Receipts and other files. Optional (absent on older documents). */
+  attachments?: Attachment[];
 }
 
 export interface MerchantDefaults {
@@ -140,6 +162,8 @@ export interface Filter {
   text?: string;
   minAmount?: Minor | null;
   maxAmount?: Minor | null;
+  /** true = only transactions with a receipt/attachment; false = only without. */
+  hasAttachment?: boolean | null;
 }
 
 export type PeriodUnit = 'day' | 'week' | 'month' | 'year';

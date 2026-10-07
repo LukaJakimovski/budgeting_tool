@@ -71,6 +71,20 @@ export function decryptJSON<T = unknown>(keyHex: string, id: string, payload: st
   return JSON.parse(bytesToUtf8(pt)) as T;
 }
 
+/** Encrypt raw bytes (attachments): nonce[12] ‖ ciphertext+tag, with `blob:<id>` as associated data. */
+export function encryptBytes(keyHex: string, id: string, data: Uint8Array): Uint8Array {
+  const nonce = randomBytes(12);
+  const ct = gcm(hexToBytes(keyHex), nonce, utf8ToBytes(`blob:${id}`)).encrypt(data);
+  const out = new Uint8Array(12 + ct.length);
+  out.set(nonce);
+  out.set(ct, 12);
+  return out;
+}
+
+export function decryptBytes(keyHex: string, id: string, data: Uint8Array): Uint8Array {
+  return gcm(hexToBytes(keyHex), data.subarray(0, 12), utf8ToBytes(`blob:${id}`)).decrypt(data.subarray(12));
+}
+
 /** Hash for PIN checks etc. (fast; PINs are a UI lock, see docs/security.md). */
 export async function slowHash(secret: string, saltHex: string, iterations = 100_000): Promise<string> {
   const salt = hexToBytes(saltHex);

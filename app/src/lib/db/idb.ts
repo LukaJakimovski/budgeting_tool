@@ -1,8 +1,10 @@
 /**
- * IndexedDB persistence. Three object stores:
- *   docs   – every document (the source of truth on this device)
- *   outbox – {id, rev} of local changes not yet acknowledged by the sync server
- *   meta   – device-local key/values (device id, sync cursor, keys, PIN…)
+ * IndexedDB persistence. Object stores:
+ *   docs        – every document (the source of truth on this device)
+ *   outbox      – {id, rev} of local changes not yet acknowledged by the sync server
+ *   meta        – device-local key/values (device id, sync cursor, keys, PIN…)
+ *   blobs       – attachment bytes (receipt photos…), {id, mime, data: Uint8Array}
+ *   blobOutbox  – {id, op: 'put' | 'delete'} blob changes not yet sent to the server
  * A local save writes the doc and its outbox entry in one transaction, so a
  * change is never stored without being queued for sync.
  */
@@ -13,7 +15,19 @@ export interface OutboxEntry {
   rev: string;
 }
 
-const DB_VERSION = 1;
+export interface StoredBlob {
+  id: string;
+  mime: string;
+  /** Raw bytes. Uint8Array rather than Blob: it stores reliably in every WebView. */
+  data: Uint8Array;
+}
+
+export interface BlobOutboxEntry {
+  id: string;
+  op: 'put' | 'delete';
+}
+
+const DB_VERSION = 2;
 
 function req<T>(r: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -40,8 +54,17 @@ export class LocalDB {
       if (!db.objectStoreNames.contains('docs')) db.createObjectStore('docs', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
+      // v2: attachments
+      if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('blobOutbox')) db.createObjectStore('blobOutbox', { keyPath: 'id' });
     };
+    open.onblocked = () => console.warn('[tally] database upgrade waiting for other Tally tabs to close');
     const db = await req(open);
+    // Let a newer version in another tab upgrade the database.
+    db.onversionchange = () => {
+      db.close();
+      if (typeof location !== 'undefined') location.reload();
+    };
     // Ask the browser not to evict our data under storage pressure.
     try {
       await navigator.storage?.persist?.();
@@ -125,9 +148,69 @@ export class LocalDB {
     await done(tx);
   }
 
+  // ---------------------------------------------------------------------------
+  // Blobs (attachment bytes)
+
+  /** Store bytes locally; with `queue`, also schedule the upload. */
+  async putBlob(blob: StoredBlob, queue: boolean): Promise<void> {
+    const tx = this.db.transaction(['blobs', 'blobOutbox'], 'readwrite');
+    tx.objectStore('blobs').put({ id: blob.id, mime: blob.mime, data: blob.data });
+    if (queue) tx.objectStore('blobOutbox').put({ id: blob.id, op: 'put' } satisfies BlobOutboxEntry);
+    await done(tx);
+  }
+
+  async getBlob(id: string): Promise<StoredBlob | undefined> {
+    const tx = this.db.transaction('blobs', 'readonly');
+    return req(tx.objectStore('blobs').get(id) as IDBRequest<StoredBlob | undefined>);
+  }
+
+  /** Remove local bytes; with `queue`, also delete it on the server at next sync. */
+  async deleteBlob(id: string, queue: boolean): Promise<void> {
+    const tx = this.db.transaction(['blobs', 'blobOutbox'], 'readwrite');
+    tx.objectStore('blobs').delete(id);
+    if (queue) tx.objectStore('blobOutbox').put({ id, op: 'delete' } satisfies BlobOutboxEntry);
+    else tx.objectStore('blobOutbox').delete(id);
+    await done(tx);
+  }
+
+  async blobIds(): Promise<string[]> {
+    const tx = this.db.transaction('blobs', 'readonly');
+    return req(tx.objectStore('blobs').getAllKeys() as IDBRequest<string[]>);
+  }
+
+  async blobStats(): Promise<{ count: number; bytes: number }> {
+    const tx = this.db.transaction('blobs', 'readonly');
+    const all = await req(tx.objectStore('blobs').getAll() as IDBRequest<StoredBlob[]>);
+    return { count: all.length, bytes: all.reduce((n, b) => n + b.data.byteLength, 0) };
+  }
+
+  async blobOutbox(): Promise<BlobOutboxEntry[]> {
+    const tx = this.db.transaction('blobOutbox', 'readonly');
+    return req(tx.objectStore('blobOutbox').getAll() as IDBRequest<BlobOutboxEntry[]>);
+  }
+
+  /** Queue every local blob for upload (when connecting to a new vault). */
+  async queueAllBlobs(): Promise<void> {
+    const ids = await this.blobIds();
+    const tx = this.db.transaction('blobOutbox', 'readwrite');
+    for (const id of ids) tx.objectStore('blobOutbox').put({ id, op: 'put' });
+    await done(tx);
+  }
+
+  async ackBlob(entry: BlobOutboxEntry): Promise<void> {
+    const tx = this.db.transaction('blobOutbox', 'readwrite');
+    const store = tx.objectStore('blobOutbox');
+    const cur = store.get(entry.id);
+    cur.onsuccess = () => {
+      const v = cur.result as BlobOutboxEntry | undefined;
+      if (v && v.op === entry.op) store.delete(entry.id);
+    };
+    await done(tx);
+  }
+
   /** Delete all documents and the outbox (keeps device meta unless `everything`). */
   async wipe(everything = false): Promise<void> {
-    const stores = everything ? ['docs', 'outbox', 'meta'] : ['docs', 'outbox'];
+    const stores = everything ? ['docs', 'outbox', 'meta', 'blobs', 'blobOutbox'] : ['docs', 'outbox'];
     const tx = this.db.transaction(stores, 'readwrite');
     for (const s of stores) tx.objectStore(s).clear();
     await done(tx);

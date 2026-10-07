@@ -40,7 +40,8 @@ app/                      the web app (Svelte 5 + TypeScript + Vite)
   src/lib/analysis.ts     view-models for stats and widgets
   src/lib/importers.ts    bank CSV import (CIBC preset)
   src/lib/exporters.ts    JSON / CSV / SQLite export
-  src/lib/backup.ts       backup reminders, restore
+  src/lib/backup.ts       backup reminders, zip backups, restore
+  src/lib/attachments.ts  receipts: image shrinking, local storage, lazy download, clean-up
   src/routes/             screens (Home, History, Stats, Budgets, Settings…, TxEditor)
   src/widgets/            dashboard widgets + registry
   android/                Capacitor Android project

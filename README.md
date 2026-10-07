@@ -17,7 +17,8 @@ server you run yourself (e.g. a Raspberry Pi on Tailscale).
 * **Quick entry:** amount → merchant (autocomplete) → save. Each merchant
   remembers its category, payment method, online/in-person and currency.
   Optional details: item name, date/time, tags, description, purpose, **split
-  across categories**, other currencies. Undo after saving.
+  across categories**, other currencies, **receipt photos/PDFs**. Undo after
+  saving.
 * **Budgets that matter while you shop:** daily/weekly/monthly/yearly (or every
   N), on any mix of categories, tags, merchants and payment methods; overlapping
   is fine (Food *and* Sweet treats). After every purchase you see what's left;
