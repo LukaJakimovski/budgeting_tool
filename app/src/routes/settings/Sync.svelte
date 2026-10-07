@@ -141,7 +141,7 @@
         </div>
         {#if probe}<span class="hint status-good">✓ Tally server {probe.version} — new vaults: {probe.signup}</span>{/if}
         {#if probeError}<span class="error-text">{probeError}</span>{/if}
-        {#if normaliseServerUrl(serverUrl).startsWith('http://') && !normaliseServerUrl(serverUrl).includes('localhost')}
+        {#if /^http:\/\/(?!localhost|127\.)/.test(normaliseServerUrl(serverUrl))}
           <span class="hint">Tip: use HTTPS (e.g. <code>tailscale serve</code>) so the web app can work offline and install as an app.</span>
         {/if}
       </label>

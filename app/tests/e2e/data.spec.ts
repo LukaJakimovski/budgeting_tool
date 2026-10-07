@@ -40,7 +40,7 @@ test('import a CIBC statement', async ({ page }) => {
   await page.locator('input[type=file]').setInputFiles(join(here, '../fixtures/cibc-credit.csv'));
   await expect(page.getByText('CIBC format detected')).toBeVisible();
   await page.getByRole('button', { name: 'Review rows' }).click();
-  await expect(page.getByText('Card payment / transfer')).toBeVisible();
+  await expect(page.getByText('Card payment / transfer', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /^Import \d+/ }).click();
   await expect(page.getByText(/Imported 5 transactions/)).toBeVisible();
 });

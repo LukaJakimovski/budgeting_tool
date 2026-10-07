@@ -175,7 +175,7 @@
         <span><strong>{totals.import}</strong> to import</span>
         {#if totals.matches}<span>{totals.matches} already logged by you</span>{/if}
         {#if totals.duplicate}<span>{totals.duplicate} imported before</span>{/if}
-        {#if totals.payment}<span>{totals.payment} card payments</span>{/if}
+        {#if totals.payment}<span>{totals.payment} card payment{totals.payment === 1 ? '' : 's'} / transfer{totals.payment === 1 ? '' : 's'}</span>{/if}
         {#if totals.invalid}<span class="status-bad">{totals.invalid} unreadable</span>{/if}
       </div>
       <p class="faint small">Rows you already entered by hand are linked to their bank line instead of being added twice. New merchant names are cleaned up from the bank text — edit them here and they'll be recognised automatically next time.</p>
@@ -184,49 +184,41 @@
           <button aria-pressed={show === k} onclick={() => (show = k as typeof show)}>{l}</button>
         {/each}
       </div>
-      <div class="table-wrap">
-        <table class="data">
-          <thead><tr><th></th><th>Date</th><th>Bank text</th><th>Merchant</th><th>Category</th><th class="r">Amount</th></tr></thead>
-          <tbody>
-            {#each visible as r (r.index)}
-              <tr class:skip={r.action === 'skip'}>
-                <td><input type="checkbox" checked={r.action === 'import'} disabled={r.reason === 'invalid'} onchange={(e) => (r.action = (e.target as HTMLInputElement).checked ? 'import' : 'skip')} aria-label="Import this row" /></td>
-                <td class="nowrap num">{r.date ? fmtDate(r.date) : '?'}</td>
-                <td class="desc">
-                  {r.description}
-                  {#if r.reason}<span class="badge">{REASON[r.reason]}</span>{/if}
-                  {#if r.matchId}
-                    {@const t = repo.get<Transaction>(r.matchId)}
-                    {#if t}<span class="faint tiny block">↔ {txTitle(t)}</span>{/if}
-                  {/if}
-                </td>
-                <td>
-                  {#if r.merchantId}
-                    {merchantName(r.merchantId)}
-                  {:else if r.action === 'import'}
-                    <input class="input mini" bind:value={newNames[r.index]} placeholder="Merchant name" aria-label="New merchant name" />
-                  {/if}
-                </td>
-                <td>
-                  {#if r.action === 'import'}
-                    <select class="select mini" bind:value={r.categoryId} aria-label="Category">
-                      <option value={null}>—</option>
-                      {#each expenseCats.filter((c) => c.kind === (r.kind === 'income' ? 'income' : 'expense')) as c (c.id)}<option value={c.id}>{c.parentId ? '  ' : ''}{c.icon} {c.name}</option>{/each}
-                    </select>
-                  {/if}
-                </td>
-                <td class="r num nowrap">
-                  {#if r.action === 'import'}
-                    <select class="select mini kind" bind:value={r.kind} aria-label="Type">
-                      {#each [['expense', '−'], ['refund', '+ refund'], ['income', '+ income']] as [k, l] (k)}<option value={k as TxKind}>{l}</option>{/each}
-                    </select>
-                  {/if}
-                  {formatMoney(r.amount, mapping?.currency ?? 'CAD')}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+      <div class="rows">
+        {#each visible as r (r.index)}
+          <div class="irow" class:skip={r.action === 'skip'}>
+            <div class="top">
+              <input type="checkbox" checked={r.action === 'import'} disabled={r.reason === 'invalid'} onchange={(e) => (r.action = (e.target as HTMLInputElement).checked ? 'import' : 'skip')} aria-label={`Import ${r.description}`} />
+              <span class="num nowrap">{r.date ? fmtDate(r.date) : '?'}</span>
+              <span class="spacer"></span>
+              <strong class="num nowrap">{r.kind === 'expense' ? '' : '+'}{formatMoney(r.amount, mapping?.currency ?? 'CAD')}</strong>
+            </div>
+            <div class="desc">
+              {r.description}
+              {#if r.reason}<span class="badge">{REASON[r.reason]}</span>{/if}
+              {#if r.matchId}
+                {@const t = repo.get<Transaction>(r.matchId)}
+                {#if t}<span class="faint tiny block">↔ {txTitle(t)}</span>{/if}
+              {/if}
+            </div>
+            {#if r.action === 'import'}
+              <div class="edit">
+                {#if r.merchantId}
+                  <span class="merchant"><Icon name="store" size={14} /> {merchantName(r.merchantId)}</span>
+                {:else}
+                  <input class="input mini" bind:value={newNames[r.index]} placeholder="Merchant name" aria-label="New merchant name" />
+                {/if}
+                <select class="select mini" bind:value={r.categoryId} aria-label="Category">
+                  <option value={null}>Category…</option>
+                  {#each expenseCats.filter((c) => c.kind === (r.kind === 'income' ? 'income' : 'expense')) as c (c.id)}<option value={c.id}>{c.icon} {c.name}</option>{/each}
+                </select>
+                <select class="select mini kind" bind:value={r.kind} aria-label="Type">
+                  {#each [['expense', 'Expense'], ['refund', 'Refund'], ['income', 'Income']] as [k, l] (k)}<option value={k as TxKind}>{l}</option>{/each}
+                </select>
+              </div>
+            {/if}
+          </div>
+        {/each}
       </div>
       <div class="row">
         <button class="btn" onclick={() => (step = 2)}>Back</button>
@@ -284,27 +276,70 @@
     flex-wrap: wrap;
     gap: var(--s4);
   }
-  .table-wrap {
-    overflow-x: auto;
-    max-height: 60vh;
+  .rows {
+    display: flex;
+    flex-direction: column;
+    max-height: 65vh;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .irow {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: var(--s3);
+    border-bottom: 1px solid var(--border);
+  }
+  .irow:last-child {
+    border-bottom: 0;
+  }
+  .top {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+  .top input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
   }
   .skip {
-    opacity: 0.5;
+    opacity: 0.55;
   }
   .desc {
-    min-width: 220px;
     font-size: 0.85rem;
+    color: var(--text-muted);
+    word-break: break-word;
+  }
+  .edit {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: var(--s2);
+    align-items: center;
+  }
+  .merchant {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 550;
   }
   .mini {
-    min-height: 32px;
-    padding: 2px 6px;
+    min-height: 34px;
+    padding: 2px 8px;
     font-size: 0.85rem;
-    min-width: 120px;
+    min-width: 0;
   }
   .kind {
-    min-width: 0;
     width: auto;
-    margin-right: 6px;
+  }
+  @media (max-width: 520px) {
+    .edit {
+      grid-template-columns: 1fr 1fr;
+    }
+    .edit .kind {
+      grid-column: span 2;
+    }
   }
   .nowrap {
     white-space: nowrap;
