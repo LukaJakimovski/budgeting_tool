@@ -102,8 +102,10 @@ verify_apk() {
   if ! out=$("$signer" verify --print-certs "$apk" 2>&1); then
     fail "✗ $(basename "$apk") is not validly signed; Android won't install it." "$out"
   fi
-  dn=$(sed -n 's/^Signer #1 certificate DN: //p' <<<"$out")
-  sha=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$out")
+  # "Signer #1 certificate DN: …" / "…SHA-256 digest: …"; the prefix varies between apksigner versions.
+  dn=$(grep -m1 -i 'certificate DN' <<<"$out" | sed -E 's/^.*certificate DN[^:]*: *//I' || true)
+  sha=$(grep -m1 -i 'SHA-256 digest' <<<"$out" | sed -E 's/^.*SHA-256 digest[^:]*: *//I' || true)
+  [ -n "$sha" ] || fail "apksigner says $(basename "$apk") is signed, but I couldn't find the certificate in its output:" "$out"
   say "Signature OK: $apk"
   echo "  Signed by: $dn"
   echo "  SHA-256:   $sha"
