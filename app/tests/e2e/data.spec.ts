@@ -4,7 +4,7 @@ import { writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { start } from './helpers';
+import { start, waitForStored } from './helpers';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
@@ -51,6 +51,7 @@ test('appearance: pick a style and colour, persists after reload', async ({ page
   await page.getByRole('button', { name: /Forest/ }).click();
   await page.getByRole('button', { name: 'Use #d9468a' }).click();
   await page.getByRole('button', { name: 'Dark' }).click();
+  await waitForStored(page, 'setting:appearance', (d) => d?.value?.mode === 'dark' && d.value.styleId === 'forest');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-style', 'forest');
   await expect(page.locator('html')).toHaveAttribute('data-mode', 'dark');
