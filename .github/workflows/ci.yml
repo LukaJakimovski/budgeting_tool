@@ -58,3 +58,13 @@ jobs:
           java-version: 21
       - name: Build debug APK
         run: app/android/build-apk.sh
+      - name: Build a release APK with a throwaway key and check it's signed with that key
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/ci.jks" -alias ci -keyalg RSA -keysize 2048 -validity 2 \
+            -storepass ci-pass -keypass ci-pass -dname "CN=Tally CI"
+          export TALLY_KEYSTORE="$RUNNER_TEMP/ci.jks" TALLY_KEYSTORE_PASSWORD=ci-pass TALLY_KEY_ALIAS=ci TALLY_KEY_PASSWORD=ci-pass
+          app/android/build-apk.sh release
+          # …and that a debug APK is told apart from it
+          if app/android/build-apk.sh verify app/android/app/build/outputs/apk/debug/app-debug.apk; then
+            echo "verify should have rejected the debug APK"; exit 1
+          fi

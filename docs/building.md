@@ -158,8 +158,37 @@ Local release build:
 
 ```bash
 export TALLY_KEYSTORE=$PWD/tally.jks TALLY_KEYSTORE_PASSWORD=… TALLY_KEY_ALIAS=tally TALLY_KEY_PASSWORD=…
-./gradlew assembleRelease     # → app/build/outputs/apk/release/app-release.apk
+app/android/build-apk.sh release     # → app/android/app/build/outputs/apk/release/app-release.apk
 ```
+
+### Checking the signature
+
+`build-apk.sh` checks every APK it builds and prints who signed it. To check one
+yourself, for example an APK downloaded from a GitHub release:
+
+```bash
+app/android/build-apk.sh verify                    # the APK you built last
+app/android/build-apk.sh verify ~/Downloads/tally-0.2.0.apk
+```
+
+* **`✓ Signed with your key`**: shown when `TALLY_KEYSTORE` (and `TALLY_KEY_ALIAS`)
+  are set and the APK's certificate matches it. Without
+  `TALLY_KEYSTORE_PASSWORD`, keytool asks for the password.
+* **`That's a debug key`**: a debug build. Android won't let an APK signed with a
+  different key update it.
+* **`✗ NOT signed with your key`** / **`not validly signed`**: don't install it
+  over your existing app.
+
+By hand, the two fingerprints should be equal:
+
+```bash
+~/Android/Sdk/build-tools/*/apksigner verify --print-certs app-release.apk | grep SHA-256
+keytool -list -v -keystore tally.jks -alias tally | grep SHA256
+```
+
+On the phone, Android refuses an update signed with a different key: *"App not
+installed as package conflicts with an existing package"*. Seeing that means
+the keys differ.
 
 For CI, add these repository secrets (*Settings → Secrets and variables →
 Actions*): `ANDROID_KEYSTORE_BASE64` (`base64 -w0 tally.jks`),
